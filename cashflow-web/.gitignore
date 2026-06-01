@@ -1,0 +1,19 @@
+# أسرار — لا تُدفع أبداً
+.env
+
+# Python
+*.pyc
+__pycache__/
+.venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+
+# Node / build
+node_modules/
+dist/
+
+# أدوات / مؤقّتات
+.superpowers/
+*.bin
+.DS_Store
