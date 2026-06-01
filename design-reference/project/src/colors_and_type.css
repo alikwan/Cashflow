@@ -1,0 +1,349 @@
+/* =========================================================================
+   DC-System — Colors & Type
+   Single source of truth. Import once at the root of any page/app.
+   ========================================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&family=Tajawal:wght@300;400;500;700&display=swap');
+
+:root {
+  /* ---------- Core semantic colors ---------- */
+  --color-primary:          #2563EB;   /* primary-600 */
+  --color-primary-hover:    #1D4ED8;   /* primary-700 */
+  --color-secondary:        #475569;   /* slate-600 */
+  --color-cta:              #F97316;   /* orange-500 */
+
+  --color-bg:               #F8FAFC;   /* slate-50 — page */
+  --color-surface:          #FFFFFF;   /* card */
+  --color-surface-alt:      #F1F5F9;   /* slate-100 — subtle band */
+
+  --color-text:             #0F172A;   /* slate-900 */
+  --color-text-secondary:   #64748B;   /* slate-500 */
+  --color-text-muted:       #94A3B8;   /* slate-400 */
+
+  --color-border:           #E2E8F0;   /* slate-200 */
+  --color-border-light:     #F1F5F9;   /* slate-100 */
+
+  /* ---------- Primary ramp (blue) ---------- */
+  --primary-50:  #EFF6FF;
+  --primary-100: #DBEAFE;
+  --primary-200: #BFDBFE;
+  --primary-300: #93C5FD;
+  --primary-400: #60A5FA;
+  --primary-500: #3B82F6;
+  --primary-600: #2563EB;
+  --primary-700: #1D4ED8;
+  --primary-800: #1E40AF;
+  --primary-900: #1E3A8A;
+
+  /* ---------- Status ramps ---------- */
+  --success-50:  #F0FDF4;
+  --success-100: #DCFCE7;
+  --success-200: #BBF7D0;
+  --success-300: #86EFAC;
+  --success-400: #4ADE80;
+  --success-500: #22C55E;
+  --success-600: #16A34A;
+  --success-700: #15803D;
+  --success-800: #166534;
+
+  --warning-50:  #FFFBEB;
+  --warning-100: #FEF3C7;
+  --warning-200: #FDE68A;
+  --warning-300: #FCD34D;
+  --warning-400: #FBBF24;
+  --warning-500: #F59E0B;
+  --warning-600: #D97706;
+  --warning-700: #B45309;
+  --warning-800: #92400E;
+
+  --danger-50:   #FEF2F2;
+  --danger-100:  #FEE2E2;
+  --danger-200:  #FECACA;
+  --danger-300:  #FCA5A5;
+  --danger-400:  #F87171;
+  --danger-500:  #EF4444;
+  --danger-600:  #DC2626;
+  --danger-700:  #B91C1C;
+  --danger-800:  #991B1B;
+
+  --info-50:     #EFF6FF;
+  --info-100:    #DBEAFE;
+  --info-500:    #3B82F6;
+  --info-600:    #2563EB;
+  --info-700:    #1D4ED8;
+
+  /* ---------- Slate (neutral) ---------- */
+  --slate-50:    #F8FAFC;
+  --slate-100:   #F1F5F9;
+  --slate-200:   #E2E8F0;
+  --slate-300:   #CBD5E1;
+  --slate-400:   #94A3B8;
+  --slate-500:   #64748B;
+  --slate-600:   #475569;
+  --slate-700:   #334155;
+  --slate-800:   #1E293B;
+  --slate-900:   #0F172A;
+
+  /* ---------- Domain colors ---------- */
+  /* Call states */
+  --call-idle:      var(--slate-400);
+  --call-dialing:   var(--primary-500);
+  --call-ringing:   var(--warning-500);
+  --call-answered:  var(--success-500);
+  --call-ended:     var(--slate-500);
+  --call-failed:    var(--danger-500);
+
+  /* Delinquency buckets */
+  --bucket-0-30:    var(--success-500);
+  --bucket-31-60:   var(--warning-400);
+  --bucket-61-90:   var(--warning-600);
+  --bucket-91-120:  #EA580C;          /* orange-600 */
+  --bucket-120-plus:var(--danger-600);
+
+  /* Escalation */
+  --escal-none:        var(--slate-400);
+  --escal-sms:         var(--info-500);
+  --escal-call:        var(--primary-600);
+  --escal-field:       var(--warning-600);
+  --escal-legal:       var(--danger-600);
+  --escal-closed:      var(--slate-600);
+
+  /* ---------- Chart categorical palette (ordered) ---------- */
+  --chart-1: #2563EB;
+  --chart-2: #16A34A;
+  --chart-3: #F97316;
+  --chart-4: #7C3AED;
+  --chart-5: #DC2626;
+  --chart-6: #0891B2;
+  --chart-7: #CA8A04;
+  --chart-8: #DB2777;
+
+  /* ---------- Typography ---------- */
+  --font-body:      'Cairo', system-ui, -apple-system, 'Segoe UI', Tahoma, sans-serif;
+  --font-heading:   'Tajawal', 'Cairo', system-ui, sans-serif;
+  --font-mono:      ui-monospace, SFMono-Regular, 'Cairo', monospace;
+
+  --fs-h1: 1.875rem;   /* 30px */
+  --fs-h2: 1.5rem;     /* 24px */
+  --fs-h3: 1.25rem;    /* 20px */
+  --fs-h4: 1.125rem;   /* 18px */
+  --fs-body: 1rem;     /* 16px */
+  --fs-sm: 0.875rem;   /* 14px */
+  --fs-xs: 0.75rem;    /* 12px */
+
+  --lh-h1: 1.3;
+  --lh-h2: 1.35;
+  --lh-h3: 1.4;
+  --lh-h4: 1.45;
+  --lh-body: 1.6;
+  --lh-sm: 1.5;
+  --lh-xs: 1.4;
+
+  /* ---------- Spacing (4px base) ---------- */
+  --space-xs:  4px;
+  --space-sm:  8px;
+  --space-md:  16px;
+  --space-lg:  24px;
+  --space-xl:  32px;
+  --space-2xl: 48px;
+  --space-3xl: 64px;
+
+  /* ---------- Radii ---------- */
+  --radius-sm:   8px;   /* inputs, buttons, small badges */
+  --radius-md:   12px;  /* stat icons, avatars */
+  --radius-lg:   16px;  /* cards, modals, dropdowns */
+  --radius-full: 9999px;
+
+  /* ---------- Shadows ---------- */
+  --shadow-sm:   0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md:   0 4px 6px rgba(0,0,0,0.07);
+  --shadow-lg:   0 10px 15px rgba(0,0,0,0.08);
+  --shadow-xl:   0 20px 25px rgba(0,0,0,0.10);
+  --shadow-card: 0 4px 12px rgba(15,23,42,0.10);
+
+  /* ---------- Motion ---------- */
+  --ease-std: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-color: 150ms;
+  --dur-shadow: 200ms;
+  --dur-layout: 300ms;
+}
+
+/* =========================================================================
+   Global base — Arabic-first, RTL, Western digits
+   ========================================================================= */
+html { direction: rtl; }
+html[lang="ar"], html[dir="rtl"] { direction: rtl; }
+
+html, body {
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Force Western digits + tabular figures across the whole app */
+* {
+  font-feature-settings: 'locl' 0;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+/* =========================================================================
+   Semantic type classes
+   ========================================================================= */
+.h1, h1 { font-family: var(--font-heading); font-size: var(--fs-h1); line-height: var(--lh-h1); font-weight: 700; letter-spacing: -0.01em; color: var(--color-text); }
+.h2, h2 { font-family: var(--font-heading); font-size: var(--fs-h2); line-height: var(--lh-h2); font-weight: 700; letter-spacing: -0.005em; color: var(--color-text); }
+.h3, h3 { font-family: var(--font-heading); font-size: var(--fs-h3); line-height: var(--lh-h3); font-weight: 600; color: var(--color-text); }
+.h4, h4 { font-family: var(--font-heading); font-size: var(--fs-h4); line-height: var(--lh-h4); font-weight: 600; color: var(--color-text); }
+.body    { font-size: var(--fs-body); line-height: var(--lh-body); }
+.text-sm { font-size: var(--fs-sm);  line-height: var(--lh-sm); }
+.text-xs { font-size: var(--fs-xs);  line-height: var(--lh-xs); font-weight: 500; }
+
+.text-primary          { color: var(--color-text); }
+.text-secondary        { color: var(--color-text-secondary); }
+.text-muted            { color: var(--color-text-muted); }
+.text-success          { color: var(--success-700); }
+.text-warning          { color: var(--warning-700); }
+.text-danger           { color: var(--danger-700); }
+.text-brand            { color: var(--color-primary); }
+
+.num { font-variant-numeric: lining-nums tabular-nums; font-feature-settings: 'locl' 0; }
+
+/* =========================================================================
+   Reduced motion
+   ========================================================================= */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* =========================================================================
+   Components (reusable primitives)
+   ========================================================================= */
+
+/* Buttons ----------------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 12px 24px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  line-height: 1;
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  transition: background var(--dur-color) var(--ease-std),
+              box-shadow var(--dur-shadow) var(--ease-std),
+              color var(--dur-color) var(--ease-std),
+              border-color var(--dur-color) var(--ease-std);
+  white-space: nowrap;
+  user-select: none;
+}
+.btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.btn[disabled], .btn:disabled { opacity: 0.6; cursor: not-allowed; pointer-events: none; }
+
+.btn-sm { padding: 6px 12px; font-size: var(--fs-xs); }
+.btn-lg { padding: 14px 28px; font-size: var(--fs-body); }
+
+.btn-primary    { background: var(--color-primary); color: #fff; box-shadow: var(--shadow-sm); }
+.btn-primary:hover { background: var(--color-primary-hover); box-shadow: var(--shadow-md); }
+
+.btn-secondary  { background: transparent; color: var(--color-primary); border-color: var(--color-primary); }
+.btn-secondary:hover { background: var(--primary-50); }
+
+.btn-danger     { background: var(--danger-600); color: #fff; }
+.btn-danger:hover { background: var(--danger-700); box-shadow: var(--shadow-md); }
+
+.btn-success    { background: var(--success-600); color: #fff; }
+.btn-success:hover { background: var(--success-700); }
+
+.btn-ghost      { background: transparent; color: var(--color-secondary); }
+.btn-ghost:hover { background: var(--slate-100); }
+
+/* Cards ------------------------------------------------------------------- */
+.card, .dc-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--dur-shadow) var(--ease-std);
+}
+.card:hover, .dc-card:hover { box-shadow: var(--shadow-card); }
+
+/* Inputs ------------------------------------------------------------------ */
+.input, .ds-search-input {
+  display: block;
+  width: 100%;
+  background: #fff;
+  border: 1px solid var(--slate-300);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: var(--fs-sm);
+  font-family: var(--font-body);
+  color: var(--color-text);
+  transition: border-color var(--dur-color) var(--ease-std),
+              box-shadow var(--dur-color) var(--ease-std);
+}
+.input::placeholder, .ds-search-input::placeholder { color: var(--slate-400); }
+.input:focus, .ds-search-input:focus {
+  border-color: var(--color-primary);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+}
+.input:disabled { background: var(--slate-100); color: var(--slate-400); cursor: not-allowed; }
+.input[aria-invalid="true"] { border-color: var(--danger-600); }
+.input[aria-invalid="true"]:focus { box-shadow: 0 0 0 3px rgba(220,38,38,0.12); }
+
+.label { display: block; font-size: var(--fs-sm); font-weight: 500; color: var(--slate-700); margin-bottom: 6px; }
+.help  { font-size: var(--fs-xs); color: var(--slate-500); margin-top: 4px; }
+.err   { font-size: var(--fs-xs); color: var(--danger-600); margin-top: 4px; }
+
+/* Badges / pills ---------------------------------------------------------- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.badge-gray    { background: var(--slate-100);   color: var(--slate-700); }
+.badge-blue    { background: var(--primary-100); color: var(--primary-700); }
+.badge-green   { background: var(--success-100); color: var(--success-700); }
+.badge-red     { background: var(--danger-100);  color: var(--danger-700); }
+.badge-amber   { background: var(--warning-100); color: var(--warning-700); }
+.badge-purple  { background: #EDE9FE;            color: #6D28D9; }
+
+/* Dot (status) ------------------------------------------------------------ */
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.dot-live { position: relative; background: var(--success-500); }
+.dot-live::after {
+  content: ""; position: absolute; inset: -4px; border-radius: 50%;
+  background: var(--success-500); opacity: 0.5;
+  animation: dc-ping 1.4s var(--ease-std) infinite;
+}
+@keyframes dc-ping { 0% { transform: scale(0.6); opacity: 0.6 } 80%, 100% { transform: scale(1.6); opacity: 0 } }
+
+/* Focus ring (utility) ---------------------------------------------------- */
+.focus-ring:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+/* Skeleton ---------------------------------------------------------------- */
+.skeleton {
+  background: linear-gradient(90deg, var(--slate-200) 0%, var(--slate-100) 50%, var(--slate-200) 100%);
+  background-size: 200% 100%;
+  animation: dc-skel 1.4s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+@keyframes dc-skel { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }

@@ -1,0 +1,19 @@
+# أسرار
+.env
+*.pem
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Node / build
+node_modules/
+dist/
+frontend/dist/
+
+# أدوات / مؤقّتات
+.superpowers/
+*.bin
+.DS_Store
+~$*
