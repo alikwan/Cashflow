@@ -113,9 +113,9 @@ React/Vite (واجهة عربية RTL + رسوم SVG)
 
 **`balances_snapshot`** — PK مركّب **`(snapshot_date, account_id, currency_id)`** (الحسابات الدولارية لها صف لكل عملة)، `account_name text`, `account_kind text` (`supplier`/`cashbox`/`debtor`/`partner`), `balance_m`, `balance_iqd_m`, `last_active date`. تُحفظ اللقطات تاريخياً.
 
-**`installments_summary`** — `snapshot_date date PK`, `premium_count int`, `total_committed_m`, `paid_m`, `remaining_m`.
+**`installments_summary`** — `snapshot_date date PK`, `premium_count int`, `face_total_m` (Σ القيمة الاسمية ≈7.12B), `cash_paid_m` (≈5.65B), `discount_m` (≈0.15B), `remaining_m` (**الرصيد القائم الصحيح** ≈**1.26B**). يُحسب وفق منطق DC-System `MssqlDriver` (`PremiumPays.Amount`=المتبقّي؛ settled=`PremiumState∈(3,4)` أو `Amount=0&DatePay`؛ نقد=`PremiumPayAmount−Amount−Discount`). **لا يُستخدم منطق `build_excel.py` المقلوب** (`discovery/01`).
 
-**`installments_aging`** — ✅ **محسوم ومُصمَّم** (الاستحقاقات مشتقّة من `InitDate`+جدولة شهرية×`PremiumPayAmount`، دفعات FIFO — `discovery/01`). **مقياس العمر = مزيج**: `bucket_key ∈ {current, b0_30, b31_60, b61_90, b91_120, b120, stale}` حيث `stale` = `COALESCE(آخر دفعة, InitDate) < today−12mo`. PK مركّب **`(snapshot_date, bucket_key)`**، `label text`, `amount_m`, `count int`؛ يفرض ETL Σ(amount_m) = `installments_summary.remaining_m`.
+**`installments_aging`** — ✅ **محسوم** (`discovery/01`، وفق `MssqlDriver`): العمر من **`PremiumPays.Date` = تاريخ الاستحقاق الفعلي لكل قسط** للأقساط غير المسوّاة وقائمها>0 (لا اشتقاق). `bucket_key ∈ {not_due, b0_30, b31_60, b61_90, b91_120, b120}` (+ `stale` اختياري: عقود بلا دفعة>12 شهر — قرار المالك "المزيج"). PK مركّب **`(snapshot_date, bucket_key)`**، `label text`, `amount_m`, `count int`؛ ETL يفرض Σ(amount_m)=`installments_summary.remaining_m` (≈1.26B).
 
 **`seasonal_index`** — `series_key text`, `fm_pos int (0..11)` PK مركّب، `avg_value_m`. (الموضع الشهري المالي: أيار=0 … نيسان=11)
 
@@ -195,7 +195,7 @@ React/Vite (واجهة عربية RTL + رسوم SVG)
 - `POST /api/etl/run` يدوي (محميّ بالقفل الأحادي)؛ الحالة عبر `GET /api/etl/status`.
 - بعد كل تشغيل ناجح: تُولَّد التنبيهات (§5.4) وتُجرى المطابقة (§4.3).
 - **الشركاء (`PARTNERS`)**: تُشتق سحوبات الشركاء من حسابات نوع `2518` وتبقى مُصنَّفة كسحوبات (ليست مصاريف تشغيلية). ✅ حُسم في `discovery/02` — الشركاء مُميَّزون: **فؤاد كريم `2535` · علي كوان `2536` · احمد كوان `2537`** (تُزرع بمعرّفاتها؛ بقية حسابات 2518 سحوبات عامة لا تُنسب لشريك).
-- **أعمار الأقساط**: ✅ **محلولة ومحسومة** — الاستحقاقات مشتقّة (`InitDate`+جدولة شهرية×`PremiumPayAmount`، FIFO)؛ **مقياس العمر = مزيج** (النشط بالجدولة + فئة `stale` للعقود بلا دفعة >12 شهراً). الواقع: ≈4.62 مليار راكدة من 5.86 متبقٍ (`discovery/01`).
+- **أرصدة/أعمار الأقساط**: ✅ **محسومة وفق منطق DC-System الموثّق** (`MssqlDriver`): `PremiumPays`=صف لكل قسط، `Amount`=المتبقّي، `Date`=الاستحقاق، settled=`PremiumState∈(3,4)`. **الأرقام الصحيحة**: قائم ≈**1.26 مليار** (لا 5.86)، نقد مُحصّل ≈**5.65**، متأخّر +120 ≈**0.37** فقط. أعمار من `pp.Date` الفعلي (`discovery/01`). ⛔ منطق الأقساط في `build_excel.py` **مقلوب** ولا يُستخدم.
 
 ---
 
@@ -352,7 +352,7 @@ React/Vite (واجهة عربية RTL + رسوم SVG)
 | الخطر | التخفيف / المهمة الإلزامية |
 |-------|---------|
 | اختلاف مخطّط القاعدة عن `CLAUDE.md` | ✅ **تمّ** (`discovery/00`): مطابق، 208,339 سند |
-| تعريف أعمار الأقساط | ✅ **محسوم** (`discovery/01`): الاستحقاقات مشتقّة؛ المقياس = مزيج (جدولة + فئة `stale`>12 شهر). ≈4.62 مليار راكدة |
+| أرصدة/أعمار الأقساط | ✅ **محسوم** (`discovery/01` وفق DC-System `MssqlDriver`): قائم ≈1.26B، نقد ≈5.65B، أعمار من `pp.Date`. منطق build_excel للأقساط مقلوب — لا يُستخدم |
 | تمييز الشركاء الثلاثة (حسابات 2518) | ✅ **تمّ** (`discovery/02`): مُميَّزون 2535/2536/2537 |
 | فرق مطابقة السيولة كبير (الصناديق ناقصة في المصدر) | المطابقة تُبرز الفرق للمالك لتحقّقه اليدوي العام؛ ليست بوابة مانعة للتشغيل |
 | كلمة مرور القاعدة مكشوفة + حساب `sa` مفرط الصلاحية | مستخدم قراءة-فقط منفصل + نقل الأسرار لـ `.env` (أول إجراء) |
