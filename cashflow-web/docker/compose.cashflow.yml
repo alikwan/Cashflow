@@ -1,0 +1,38 @@
+# خدمة PostgreSQL لقاعدة التطبيق (تحليلية + تطبيقية).
+#
+# الشبكة: تنضم لشبكة MSSQL الموجودة (external) ليصل إليها الـ backend لاحقاً
+#   (الخطة 4) باسم الخدمة الداخلي  postgres:5432  — دون تعريف شبكة جديدة.
+# المنفذ: المضيف 5433 → الحاوية 5432 (5432 محجوز على المضيف بحاوية أخرى)؛
+#   تطوير الخطة 0 على المضيف يصل عبر  localhost:5433  (POSTGRES_PORT=5433 في .env).
+#
+# التشغيل (من داخل cashflow-web/):
+#   docker compose --env-file .env -f docker/compose.cashflow.yml up -d
+name: cashflow
+services:
+  postgres:
+    image: postgres:16
+    container_name: cashflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5433:5432"
+    volumes:
+      - cashflow_pgdata:/var/lib/postgresql/data
+    networks:
+      - accounting_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  accounting_net:
+    name: sqlserver-docker_default
+    external: true
+
+volumes:
+  cashflow_pgdata:
