@@ -26,3 +26,8 @@ def test_perspectives_and_categories():
     assert r["out_total_comprehensive_m"] == 119.0
     assert r["net_operating_m"] == 21.0
     assert r["net_total_m"] == -19.0
+
+def test_fiscal_year_starts_may():
+    from app.domain.classify import fiscal_year_label
+    assert fiscal_year_label("2026-05") == "2026-2027"
+    assert fiscal_year_label("2026-04") == "2025-2026"

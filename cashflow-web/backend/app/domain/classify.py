@@ -20,10 +20,15 @@ def classify_monthly(bonds: pd.DataFrame) -> pd.DataFrame:
         op  = suppliers + drawings + refunds + purchases + salaries + other
         comp = op + siyrafa
         out.append(dict(
-            year_month=ym, cash_in_m=cash_in, out_suppliers_m=suppliers,
-            out_drawings_m=drawings, out_refunds_m=refunds, out_purchases_m=purchases,
-            out_salaries_m=salaries, out_other_m=other, out_siyrafa_m=siyrafa,
-            internal_transfers_m=internal, out_total_operational_m=op,
-            out_total_comprehensive_m=comp, net_operating_m=cash_in - op,
-            net_total_m=cash_in - comp, bond_count=int(len(g))))
+            year_month=ym, fiscal_year=fiscal_year_label(ym), cash_in_m=cash_in,
+            out_suppliers_m=suppliers, out_drawings_m=drawings, out_refunds_m=refunds,
+            out_purchases_m=purchases, out_salaries_m=salaries, out_other_m=other,
+            out_siyrafa_m=siyrafa, internal_transfers_m=internal,
+            out_total_operational_m=op, out_total_comprehensive_m=comp,
+            net_operating_m=cash_in - op, net_total_m=cash_in - comp,
+            bond_count=int(len(g))))
     return pd.DataFrame(out).sort_values("year_month").reset_index(drop=True)
+
+def fiscal_year_label(ym: str) -> str:
+    y, m = map(int, ym.split("-")); s = y if m >= 5 else y - 1
+    return f"{s}-{s+1}"
