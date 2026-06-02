@@ -43,7 +43,15 @@
 ## مواصفة `installments_summary` / `installments_aging` (مصحّحة)
 - `installments_summary`: `remaining_m` = الرصيد القائم (Σ القائم غير المسوّى) ≈ 1.26 مليار؛ + `cash_paid_m` ≈ 5.65 مليار، `discount_m` ≈ 0.15 مليار، `face_total_m` ≈ 7.12 مليار.
 - `installments_aging`: لكل قسط **غير مسوّى وقائم>0**، الشريحة من `pp.Date` مقابل اليوم؛ `bucket_key ∈ {not_due, b0_30, b31_60, b61_90, b91_120, b120}` (+ `stale` اختياري لعقود بلا دفعة >12 شهر — قرار المالك "المزيج"، يُطبَّق على القائم الصحيح).
-- ETL يفرض Σ(amount عبر الشرائح) = `installments_summary.remaining_m`.
+- ETL ~~يفرض~~ **لا يفرض** Σ(amount عبر الشرائح) = `installments_summary.remaining_m` — انظر ملاحظة التنفيذ أدناه.
+
+## ⚠️ تصحيح من التنفيذ (الخطة 1، Chunk E — تحقّق حيّ 2026-06-03)
+بُنيت استعلامات الاستخراج (`etl/extract.py`) بصيغة DC-System، وتأكّدت الأرقام حيّاً. لكن تبيّن أن **رقمَي «القائم» مختلفان قليلاً بحسب طريقة الحساب**:
+- **مستوى العقد** (`fetch_installments_summary`): `remaining_m = MAX(0, TotalAmount − cash − discount)` لكل عقد، مجموعها ≈ **1,315M**. هذا الرقم **يحقّق الهوية** `face(7,122) = cash(5,648) + discount(159) + remaining(1,315)` ✓ — فهو الأصحّ محاسبياً.
+- **مستوى القسط** (`fetch_installments_aging`): Σ(`pp.Amount` غير-المسوّى، >0) عبر الشرائح ≈ **1,259M**.
+- **الفرق ≈56.5M = 1,895 عقداً** صفوف أقساطها النشطة كلها `pp.Amount=0` (جدولة لم تُملأ بعد) — تُحسب في ملخّص العقد لا في الأعمار (لأن الأعمار تفلتر `pp.Amount>0` بحقّ).
+
+**الأثر على الخطة (F3 وspec §3.1):** **لا يُفرض** `Σ(aging)=remaining_m`. الـ pipeline يحمّل الاثنين كما هما، ويُسجّل الفجوة (≈56M) كـ note/حقل تسوية بدل التأكيد على المساواة. (رقم discovery الأصلي «1.26B» كان طريقة-القسط؛ طريقة-العقد ≈1.315B أدقّ وتحقّق الهوية.)
 
 ## ⛔ تحذير ملزم
 منطق `analysis/build_excel.py:get_installments_summary` (`Remaining = Σ TotalAmount − Σ PremiumPays.Amount`) **مقلوب وخاطئ** (يعامل `Amount` كمدفوع). **لا يُعاد استخدامه** — يُعتمد منطق `MssqlDriver` أعلاه حصراً. ينطبق نفس التصحيح على رقم "4.67 مليار مستحقة" في `CLAUDE.md` الأصلي.
