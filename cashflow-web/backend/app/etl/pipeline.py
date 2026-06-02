@@ -23,8 +23,7 @@ import pandas as pd
 from sqlalchemy import select, func
 
 from app.db.models import Alert, EtlRun
-
-logger = logging.getLogger(__name__)
+from app.domain.alerts import generate_alerts
 from app.domain.classify import classify_monthly
 from app.domain.forecast import seasonal_forecast
 from app.etl.extract import (
@@ -38,7 +37,8 @@ from app.etl.extract import (
 )
 from app.etl.load import atomic_replace
 from app.etl.reconcile import running_balance
-from app.domain.alerts import generate_alerts
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Module-level constants (spec §CLAUDE.md + task brief)
