@@ -11,3 +11,12 @@ def test_flat_series_forecasts_minus_reserve():
     assert all(abs(v - 8.0) < 1e-6 for v in fc.values)   # 10*(1+0) - 2 = 8
     assert fc.index[0] == "2026-05"                       # next May after 2025-12
     assert -0.10 <= fc.cagr <= 0.15
+
+def test_backtest_mape_and_confidence():
+    from app.domain.forecast import backtest_mape, confidence_label
+    s = _series()
+    mape = backtest_mape(s)                 # flat series → ~0% error
+    assert mape is not None and mape < 1.0
+    assert confidence_label(10) == "عالية"
+    assert confidence_label(40) == "متوسطة"
+    assert confidence_label(80) == "منخفضة"
