@@ -16,12 +16,15 @@ Usage::
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, date
+import logging
+from datetime import datetime, timedelta, timezone, date
 
 import pandas as pd
 from sqlalchemy import select, func
 
 from app.db.models import EtlRun
+
+logger = logging.getLogger(__name__)
 from app.domain.classify import classify_monthly
 from app.domain.forecast import seasonal_forecast
 from app.etl.extract import (
@@ -41,6 +44,10 @@ from app.etl.reconcile import running_balance
 # ---------------------------------------------------------------------------
 
 START_DATE = "2022-05-01"   # fixed historical window anchor
+
+# A 'running' row older than this is considered a crashed/stale lock and no longer
+# blocks new runs (normal ETL finishes in seconds; this only frees genuine crashes).
+STALE_LOCK_HOURS = 6
 
 # The 14 main distributors: (account_id, currency_of_balance)
 SUPPLIER_ACCOUNTS: list[tuple[int, str]] = [
@@ -92,12 +99,18 @@ class ETLAlreadyRunning(Exception):
 
 
 def _has_running_etl(session) -> bool:
-    """Return True if any etl_runs row currently has status == 'running'."""
+    """Return True if a *fresh* etl_runs row has status == 'running'.
+
+    A 'running' row older than STALE_LOCK_HOURS is treated as a crashed run and
+    does NOT block — this auto-recovers the single-flight lock from hard crashes
+    (where the failure-path update never ran), instead of deadlocking forever.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=STALE_LOCK_HOURS)
     return (
         session.scalar(
             select(func.count())
             .select_from(EtlRun)
-            .where(EtlRun.status == "running")
+            .where(EtlRun.status == "running", EtlRun.started_at > cutoff)
         )
         > 0
     )
@@ -113,9 +126,9 @@ def _build_seasonal_index(monthly: pd.DataFrame) -> pd.DataFrame:
     fm_pos = (calendar_month - 5) % 12  (fiscal-month position, 0=May … 11=Apr).
     """
     rows: list[dict] = []
+    # Derive calendar month once (identical for every series_key)
+    months = monthly["year_month"].str[5:7].astype(int)
     for series_key, col in SERIES_COLS.items():
-        # Derive calendar month from year_month string "YYYY-MM"
-        months = monthly["year_month"].str[5:7].astype(int)
         for m in months.unique():
             mask = months == m
             avg_val = float(monthly.loc[mask, col].mean())
@@ -355,7 +368,13 @@ def run_etl(session, conn, today: date | None = None) -> EtlRun:
         run.status = "failed"
         run.error_message = str(exc)[:2000]
         run.finished_at = datetime.now(timezone.utc)
-        session.commit()
+        try:
+            session.commit()
+        except Exception:
+            # Don't let a secondary commit failure mask the real error; the
+            # 'running' row may persist but STALE_LOCK_HOURS will free it.
+            session.rollback()
+            logger.exception("ETL failure-path commit failed; lock may stay until stale")
         raise
 
     return run

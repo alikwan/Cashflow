@@ -107,12 +107,15 @@ def test_full_etl_run_populates_analytics(pg_session):
         > 0
     )
 
-    # ── forecast_base ─────────────────────────────────────────────────────
-    assert (
-        pg_session.execute(
-            text("SELECT COUNT(*) FROM forecast_base")
-        ).scalar()
-        > 0
-    )
+    # ── remaining analytical tables loaded (complete coverage) ────────────
+    for tbl in ("forecast_base", "seasonal_index", "balances_snapshot", "installments_aging"):
+        cnt = pg_session.execute(text(f"SELECT COUNT(*) FROM {tbl}")).scalar()
+        assert cnt > 0, f"{tbl} has no rows after ETL"
+
+    # aging must sum to a sane figure (close to remaining, minus the ~56M known gap)
+    aging_sum = pg_session.execute(
+        text("SELECT COALESCE(SUM(amount_m),0) FROM installments_aging")
+    ).scalar()
+    assert float(aging_sum) > 1000, f"aging sum {aging_sum} too low"
 
     conn.close()
