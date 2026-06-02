@@ -144,6 +144,35 @@ OUTER APPLY (
 WHERE p.Deleted = 0
 """
 
+_SQL_PER_SUPPLIER_MONTHLY_TMPL = """\
+WITH Sup(AccountId) AS (
+    SELECT * FROM (VALUES {values}) v(AccountId)
+)
+SELECT
+    s.AccountId                                    AS supplier_account_id,
+    FORMAT(b.Date, 'yyyy-MM')                      AS year_month,
+    SUM(CASE WHEN b.AccountToId   = s.AccountId
+             THEN b.Amount1 ELSE 0 END) / 1000000.0  AS paid_m,
+    SUM(CASE WHEN b.AccountToId   = s.AccountId
+              AND b.Currency1Id   = 1
+             THEN b.Amount1 ELSE 0 END) / 1000000.0  AS paid_iqd_m,
+    SUM(CASE WHEN b.AccountToId   = s.AccountId
+              AND b.Currency1Id   = 2
+              AND b.Rate1         > 0
+             THEN b.Amount1 / b.Rate1 ELSE 0 END) / 1000000.0 AS paid_usd_m,
+    SUM(CASE WHEN b.AccountFromId = s.AccountId
+             THEN b.Amount1 ELSE 0 END) / 1000000.0  AS recv_m
+FROM Sup s
+JOIN Bonds b
+    ON (b.AccountFromId = s.AccountId OR b.AccountToId = s.AccountId)
+   AND b.Deleted          = 0
+   AND ISNULL(b.IsEdit, 0) = 0
+   AND b.Date             >= %(start)s
+   AND b.Date             <  %(end_exclusive)s
+GROUP BY s.AccountId, FORMAT(b.Date, 'yyyy-MM')
+ORDER BY s.AccountId, year_month
+"""
+
 _SQL_INSTALLMENTS_AGING = """\
 SELECT bucket_key,
        SUM(outstanding) / 1000000.0 AS amount_m,
@@ -239,3 +268,51 @@ def fetch_installments_aging(conn, asof: date) -> pd.DataFrame:
     Columns: bucket_key, amount_m, cnt.
     """
     return pd.read_sql(_SQL_INSTALLMENTS_AGING, conn, params={"asof": asof.isoformat()})
+
+
+def fetch_per_supplier_monthly(
+    conn,
+    supplier_account_ids: list[int],
+    start: str,
+    end_exclusive: str,
+) -> pd.DataFrame:
+    """
+    Monthly payments to / receipts from each supplier for the given date window.
+
+    Parameters
+    ----------
+    conn :
+        Injected pymssql connection (read-only).
+    supplier_account_ids :
+        List of integer AccountIds for the suppliers to include (the 14 main
+        distributors or any subset).  These are trusted ints — never user input.
+    start, end_exclusive :
+        ISO date strings 'YYYY-MM-DD' bounding the window (start inclusive,
+        end_exclusive exclusive).
+
+    Returns
+    -------
+    DataFrame with columns:
+        supplier_account_id  int     — MSSQL AccountId (no FK on this side)
+        year_month           str     — 'YYYY-MM'
+        paid_m               float   — Σ Amount1 paid TO supplier  / 1e6  (IQD M)
+        paid_iqd_m           float   — same, Currency1Id=1 only     / 1e6
+        paid_usd_m           float   — Amount1/Rate1 paid TO supplier
+                                       where Currency1Id=2 & Rate1>0 / 1e6 (USD M)
+        recv_m               float   — Σ Amount1 received FROM supplier / 1e6
+
+    CRITICAL: Amount1 is always IQD — NEVER multiply by Rate1.  paid_usd_m uses
+    Amount1/Rate1 to express dollar-denominated bonds in their native currency.
+    """
+    if not supplier_account_ids:
+        raise ValueError("supplier_account_ids must be non-empty")
+
+    # Build VALUES list from trusted ints — not user input, no injection risk.
+    values_str = ", ".join(f"({int(sid)})" for sid in supplier_account_ids)
+    sql = _SQL_PER_SUPPLIER_MONTHLY_TMPL.format(values=values_str)
+
+    return pd.read_sql(
+        sql,
+        conn,
+        params={"start": start, "end_exclusive": end_exclusive},
+    )
