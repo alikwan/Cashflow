@@ -6,6 +6,7 @@ No I/O, no SQLAlchemy, no pymssql — only pandas / numpy / stdlib.
 """
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -57,7 +58,6 @@ def _complete_fy_totals(series: pd.Series, fy_start: int = 5) -> pd.Series:
     fy_map: dict[str, str] = {ym: fiscal_year_label(ym) for ym in present}
 
     # Count how many of each FY's 12 canonical months exist in the series
-    from collections import defaultdict
     fy_count: dict[str, int] = defaultdict(int)
     for ym, fy in fy_map.items():
         fy_count[fy] += 1
