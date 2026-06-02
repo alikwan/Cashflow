@@ -10,6 +10,7 @@ CRITICAL accounting rules (from CLAUDE.md):
 - PremiumPays.Amount = REMAINING balance (NOT paid amount) — DC-System formula.
 """
 
+import logging
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
 
@@ -17,6 +18,8 @@ import pandas as pd
 import pymssql  # noqa: F401 — type hint only at runtime
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +213,15 @@ def fetch_avg_usd_rate(conn, asof: date) -> float:
     """
     df = pd.read_sql(_SQL_AVG_USD_RATE, conn, params={"asof": asof.isoformat()})
     val = df["avg_rate"].iloc[0] if not df.empty else None
-    return float(val) if val is not None else 1350.0
+    # AVG over an empty window yields a single NULL row → pandas NaN (not None);
+    # pd.isna catches both so the fallback isn't silently returned as NaN.
+    if val is None or pd.isna(val):
+        logger.warning(
+            "fetch_avg_usd_rate: no USD bonds with a rate in the 12 months before %s; "
+            "using fallback 1350.0", asof.isoformat(),
+        )
+        return 1350.0
+    return float(val)
 
 
 def fetch_installments_summary(conn) -> pd.DataFrame:
