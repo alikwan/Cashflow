@@ -22,7 +22,7 @@ from datetime import datetime, timedelta, timezone, date
 import pandas as pd
 from sqlalchemy import select, func
 
-from app.db.models import EtlRun
+from app.db.models import Alert, EtlRun
 
 logger = logging.getLogger(__name__)
 from app.domain.classify import classify_monthly
@@ -38,6 +38,7 @@ from app.etl.extract import (
 )
 from app.etl.load import atomic_replace
 from app.etl.reconcile import running_balance
+from app.domain.alerts import generate_alerts
 
 # ---------------------------------------------------------------------------
 # Module-level constants (spec §CLAUDE.md + task brief)
@@ -114,6 +115,101 @@ def _has_running_etl(session) -> bool:
         )
         > 0
     )
+
+
+# ---------------------------------------------------------------------------
+# Alert-context helpers (called only from run_etl)
+# ---------------------------------------------------------------------------
+
+def _forecast_net_by_month(forecast_df: pd.DataFrame) -> dict[str, float]:
+    """Compute forecast net cash per year_month.
+
+    net = value_m(series_key=='cash_in') − Σ value_m(series_key starts with 'out_')
+    Returns {year_month: net_m}.
+    """
+    if forecast_df.empty:
+        return {}
+
+    pivot = forecast_df.pivot_table(
+        index="year_month",
+        columns="series_key",
+        values="value_m",
+        aggfunc="sum",
+        fill_value=0.0,
+    )
+
+    cash_in_col = pivot.get("cash_in", pd.Series(0.0, index=pivot.index))
+    out_cols = [c for c in pivot.columns if str(c).startswith("out_")]
+    out_total = pivot[out_cols].sum(axis=1) if out_cols else pd.Series(0.0, index=pivot.index)
+
+    net = cash_in_col - out_total
+    return {str(ym): float(v) for ym, v in net.items()}
+
+
+def _fiscal_year_metrics(monthly: pd.DataFrame) -> tuple[float, float]:
+    """Return (net_decline_pct, expense_velocity) from complete fiscal years.
+
+    A complete FY has exactly 12 months.  If fewer than 2 complete FYs exist,
+    returns (0.0, 0.0).
+
+    net_decline_pct:
+        (prev_net − last_net) / prev_net  when prev_net > 0 and last_net < prev_net,
+        else 0.0.
+
+    expense_velocity:
+        (out_last / out_first) / (in_last / in_first) — how much faster expenses
+        grew relative to receipts across the first and last complete FYs.
+        Guards against divide-by-zero.
+    """
+    if monthly.empty:
+        return 0.0, 0.0
+
+    fy_groups = (
+        monthly
+        .groupby("fiscal_year", sort=True)
+        .agg(
+            month_count=("year_month", "count"),
+            in_total=("cash_in_m", "sum"),
+            out_total=("out_total_comprehensive_m", "sum"),
+            net_total=("net_total_m", "sum"),
+        )
+        .reset_index()
+    )
+
+    complete = fy_groups[fy_groups["month_count"] == 12].reset_index(drop=True)
+
+    if len(complete) < 2:
+        return 0.0, 0.0
+
+    first = complete.iloc[0]
+    last  = complete.iloc[-1]
+    prev  = complete.iloc[-2]
+
+    # net_decline_pct: compare the last two complete FYs
+    prev_net = float(prev["net_total"])
+    last_net = float(last["net_total"])
+    if prev_net > 0 and last_net < prev_net:
+        net_decline_pct = (prev_net - last_net) / prev_net
+    else:
+        net_decline_pct = 0.0
+
+    # expense_velocity: first vs last complete FY
+    in_first  = float(first["in_total"])
+    in_last   = float(last["in_total"])
+    out_first = float(first["out_total"])
+    out_last  = float(last["out_total"])
+
+    if in_first <= 0 or in_last <= 0 or out_first <= 0:
+        return net_decline_pct, 0.0
+
+    in_growth  = in_last  / in_first
+    out_growth = out_last / out_first
+
+    if in_growth <= 0:
+        return net_decline_pct, 0.0
+
+    expense_velocity = out_growth / in_growth
+    return net_decline_pct, expense_velocity
 
 
 # ---------------------------------------------------------------------------
@@ -345,11 +441,49 @@ def run_etl(session, conn, today: date | None = None) -> EtlRun:
         rows_loaded += atomic_replace(engine, "seasonal_index",        seasonal_df)
         rows_loaded += atomic_replace(engine, "forecast_base",         forecast_df)
 
-        # TODO(alerts): generate liquidity alerts from monthly + forecast here
-        # (deferred — out of scope for this task)
+        # ---------------------------------------------------------------- #
+        # 10. ALERTS (best-effort; failure is non-fatal)                    #
+        # ---------------------------------------------------------------- #
+        try:
+            fc_net = _forecast_net_by_month(forecast_df)
+            net_decline_pct, expense_velocity = _fiscal_year_metrics(monthly)
+            ctx = {
+                "forecast_net_by_month":     fc_net,
+                "neg_threshold_m":           0.0,
+                "reconciliation_residual_m": 0.0,       # back-solved → 0 for now
+                "reconciliation_threshold_m": 25.0,     # discovery/03 suggested ±25M
+                "cap_exceedances":           [],         # supplier caps not seeded yet
+                "net_decline_pct":           net_decline_pct,
+                "expense_velocity":          expense_velocity,
+            }
+            new_alerts = generate_alerts(ctx)
+            # Refresh the auto-generated set: drop unacknowledged 'new',
+            # keep 'read'/'resolved' so acknowledged alerts are preserved.
+            session.query(Alert).filter(Alert.status == "new").delete(
+                synchronize_session=False
+            )
+            now = datetime.now(timezone.utc)
+            for a in new_alerts:
+                session.add(Alert(status="new", generated_at=now, **a))
+            session.flush()
+            logger.info(
+                "alert generation: %d alerts (net_decline_pct=%.3f, "
+                "expense_velocity=%.3f, alert_types=%s)",
+                len(new_alerts),
+                net_decline_pct,
+                expense_velocity,
+                sorted({a["alert_type"] for a in new_alerts}),
+            )
+        except Exception:
+            logger.exception(
+                "alert generation failed (non-fatal; analytics already loaded)"
+            )
+            # Discard only the alert changes; data loads were separate txns
+            # (atomic_replace commits its own transactions) and are already done.
+            session.rollback()
 
         # ---------------------------------------------------------------- #
-        # 10. FINISH                                                        #
+        # 11. FINISH                                                        #
         # ---------------------------------------------------------------- #
         # reconciliation_residual_m = 0.0 intentionally:
         # opening is back-solved from (current_cash − Σ net_total_m), making
