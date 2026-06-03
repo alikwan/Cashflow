@@ -35,7 +35,7 @@ from app.etl.extract import (
     fetch_installments_summary,
     fetch_per_supplier_monthly,
 )
-from app.etl.load import atomic_replace
+from app.etl.load import atomic_replace, load_analytics  # noqa: F401 (atomic_replace kept for compat)
 from app.etl.reconcile import running_balance
 
 logger = logging.getLogger(__name__)
@@ -89,6 +89,27 @@ AGING_LABELS: dict[str, str] = {
     "b91_120":  "91-120 يوم",
     "b120":     "أكثر من 120 يوم",
 }
+
+
+# ---------------------------------------------------------------------------
+# Window helper (fix #6)
+# ---------------------------------------------------------------------------
+
+def _history_end_exclusive(today: date) -> str:
+    """Return the first day of `today`'s month as an ISO date string.
+
+    Using first-of-month as the exclusive upper bound excludes the
+    in-progress partial month from the historical series, preventing
+    partial data from biasing the seasonal average and forecast downward.
+
+    Examples
+    --------
+    >>> _history_end_exclusive(date(2026, 6, 15))
+    '2026-06-01'
+    >>> _history_end_exclusive(date(2026, 1, 9))
+    '2026-01-01'
+    """
+    return today.replace(day=1).isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -347,7 +368,9 @@ def run_etl(session, conn, today: date | None = None) -> EtlRun:
 
     # Resolve 'today'
     today = today or baghdad_today()
-    end_exclusive = today.isoformat()
+    # Fix #6: use first-of-month so the in-progress partial month is excluded
+    # from the historical series (prevents downward bias on seasonal forecast).
+    end_exclusive = _history_end_exclusive(today)
 
     # Create and persist the run row
     run = EtlRun(
@@ -430,16 +453,19 @@ def run_etl(session, conn, today: date | None = None) -> EtlRun:
         # ---------------------------------------------------------------- #
 
         # ---------------------------------------------------------------- #
-        # 9. LOAD (atomic staging→swap for each analytical table)           #
+        # 9. LOAD — all 7 tables in ONE transaction (fix #2 + fix #3)     #
+        #    Snapshot tables preserve prior dates; others are full-replace.#
         # ---------------------------------------------------------------- #
-        rows_loaded = 0
-        rows_loaded += atomic_replace(engine, "monthly_cashflow",      monthly)
-        rows_loaded += atomic_replace(engine, "per_supplier_monthly",  per_sup)
-        rows_loaded += atomic_replace(engine, "balances_snapshot",     balances_df)
-        rows_loaded += atomic_replace(engine, "installments_summary",  inst_sum_df)
-        rows_loaded += atomic_replace(engine, "installments_aging",    inst_age_df)
-        rows_loaded += atomic_replace(engine, "seasonal_index",        seasonal_df)
-        rows_loaded += atomic_replace(engine, "forecast_base",         forecast_df)
+        frames = {
+            "monthly_cashflow":     monthly,
+            "per_supplier_monthly": per_sup,
+            "seasonal_index":       seasonal_df,
+            "forecast_base":        forecast_df,
+            "balances_snapshot":    balances_df,
+            "installments_summary": inst_sum_df,
+            "installments_aging":   inst_age_df,
+        }
+        rows_loaded = load_analytics(engine, frames, today)
 
         # ---------------------------------------------------------------- #
         # 10. ALERTS (best-effort; failure is non-fatal)                    #
