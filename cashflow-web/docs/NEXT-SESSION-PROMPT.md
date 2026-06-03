@@ -1,42 +1,50 @@
-# برومبت الجلسة القادمة — استئناف بناء نظام السيولة
+# برومبت الجلسة القادمة — الخطة 2 (خلفية FastAPI)
 
 > انسخ ما تحت الخط إلى بداية الجلسة الجديدة.
 
 ---
 
-أكمل بناء **نظام ويب لإدارة السيولة النقدية لمعرض البيت السعيد**. هذه جلسة **استئناف** — لا تبدأ من الصفر، البنية والقرارات جاهزة.
+أكمل بناء **نظام ويب لإدارة السيولة النقدية لمعرض البيت السعيد**. جلسة **استئناف** — **الخطتان 0 و1 مكتملتان** (الأساس + الـ ETL يملأ القاعدة فعلياً). ابدأ **الخطة 2 (خلفية FastAPI)**. نفّذ عبر **`superpowers:subagent-driven-development`** مع الالتزام بعد كل مهمة على فرع `cashflow-web`.
 
 ## اقرأ أولاً (إلزامي قبل أي كود)
-- **المواصفة المعتمدة:** `docs/superpowers/specs/2026-06-01-cashflow-web-system-design.md`
-- **خطط التنفيذ الخمس:** `docs/superpowers/plans/2026-06-02-phase0..4-*.md` (0=الأساس، 1=ETL+domain، 2=خلفية FastAPI، 3=واجهة React، 4=تكامل/نشر)
-- **نتائج التحقّق من القاعدة الحيّة:** `cashflow-web/docs/discovery/00..03 + 04`
-- **مرجع الواجهة الملزم (نموذج التصميم):** `design-reference/` (نظام تصميم Cairo/Tajawal، أزرق #2563EB، RTL، 8 صفحات، `data.js` كعقد بيانات)
-- **🔑 مرجع حاسم لقراءة MSSQL والأقساط:** نظام **DC-System** على `/Users/ak/Documents/DC-System-Workspace/DC-System/` — خاصة `app/Services/ExternalData/Drivers/MssqlDriver.php` (وملف `CLAUDE.md` فيه). يتعامل مع نفس القاعدة وحلّ دلالات الأقساط/الدفعات.
+- **الذاكرة التلقائية** `cashflow-web-project.md` (تُحمَّل تلقائياً — فيها كل الحالة والقرارات والمتبقّي والدروس).
+- **خطة الخطة 2:** `docs/superpowers/plans/2026-06-02-phase2-backend-api.md`
+- **المواصفة:** `docs/superpowers/specs/2026-06-01-cashflow-web-system-design.md` (§5 الخلفية، §8 الأمان، §12 خريطة `data.js`→API).
+- **عقد بيانات الواجهة:** `design-reference/project/src/data.js` (شكل المفاتيح التي تتوقّعها الواجهة — نقاط القراءة يجب أن تطابقها).
+- مرجع MSSQL/الأقساط عند اللزوم: DC-System `app/Services/ExternalData/Drivers/MssqlDriver.php`.
 
-## حالة العمل
-- مستودع Git على فرع **`cashflow-web`** (جذر "Monthly cash flow"). راجع `git log`.
-- ✅ **منجز:** مهام التحقّق (Chunk A من الخطة 0) — المخطّط (208,339 سند، مطابق)، الشركاء (2535/2536/2537)، الأقساط، المطابقة.
-- ⏭️ **التالي:** الخطة 0 **Chunk B** (سقالة المشروع + خدمة Postgres + مستخدم قراءة-فقط `cashflow_ro` + `.env`) ثم **Chunk C** (نماذج SQLAlchemy + هجرات Alembic). ثم الخطط 1 → 4 بالتسلسل.
-- **نفّذ عبر منهجية `superpowers:subagent-driven-development`** (وكيل لكل مهمة + مراجعة مزدوجة)، والتزم بعد كل مهمة. مهام التحقّق والبنية التحتية نفّذها بنفسك (تحتاج Bash/Docker).
+## الحالة (فرع `cashflow-web`، ~33 التزاماً، شجرة نظيفة)
+- ✅ **الخطة 0:** Postgres + مخطّط 20 جدولاً + هجرة Alembic + مستخدم `cashflow_ro` قراءة-فقط + `.env`.
+- ✅ **الخطة 1:** وحدات `domain/` نقية (classify/forecast/allocation/alerts) + خط `etl/` كامل (extract/load/reconcile/pipeline/scheduler). **قاعدة `cashflow` مملوءة** بالجداول السبعة (34 اختباراً تنجح).
+- ✅ **مراجعة معمارية/أمنية:** تحميل ذرّي عبر الجداول (معاملة واحدة) + لقطات تاريخية تتراكم + استبعاد الشهر الجزئي + ربط Postgres بـ`127.0.0.1` + تنظيف ملفات Excel.
 
-## قرارات مثبّتة (لا تُغيّرها دون إذن المالك)
-- معمارية **FastAPI + React/Vite**؛ مستخدم واحد محلي على الشبكة؛ ETL ليلي → **PostgreSQL منفصلة** (تحليلية + تطبيقية)؛ قاعدة `AlBaytAlSaeid` **قراءة فقط**.
-- التصنيف = **`OperationsType` + نوع الحساب المقابل** (يلتقط الصيرفة Type 7). **لا تستخدم** `analysis/sql/02_monthly_cashflow.sql` (يُسقط الصيرفة).
-- **الصيرفة = الخيار 1**: تبقى بنداً مستقلاً؛ التوزيع التنبؤي على **موردي الدينار فقط** (الدولاريون يُموَّلون عبر الصيرفة، بلا ازدواج).
-- الرصيد مُثبَّت من `tAccounts` + مطابقة tie-out تدعم **تحقّق المالك اليدوي** (ليست بوابة مانعة).
-- المنطقة الزمنية **Asia/Baghdad**؛ تحميل ETL **ذرّي** (staging→swap)؛ قفل تشغيل أحادي.
+## ابدأ الخطة 2 بهذا الترتيب
+0. **أولاً (مؤجّل من الخطة 1، لازم):** **زرع جدول `suppliers` بالـ14 مورّداً** (account_id + العملة IQD/USD/MIX + السقوف). المصدر: `pipeline.SUPPLIER_ACCOUNTS` + `analysis/build_excel.py:SUPPLIERS`. بدونه: التوزيع/السقوف/تنبيه `cap_exceeded` بلا بيانات.
+1. **نقاط القراءة (§5.1)** تطابق مفاتيح `data.js`: `/api/meta`, `/api/dashboard`, `/api/cashflow/monthly`, `/api/breakdown`, `/api/suppliers`, `/api/installments`, `/api/forecast`, `/api/supplier-plan`. (تقرأ الجداول التحليلية المملوءة + تستدعي `domain` للتوزيع/التنبؤ.)
+2. **المصادقة (§5.3):** جلسة كوكي HttpOnly + تجزئة argon2/bcrypt + بذر المستخدم الأول من `.env` + كبح محاولات الدخول.
+3. **نقاط الكتابة (§5.2):** suppliers/caps · scenarios/assumptions · payment-plans (+reconcile) · notes · alerts/ack · settings — مع مغلّف أخطاء JSON موحّد + 409 + `audit_log`.
+4. **تشغيل ETL:** `POST /api/etl/run` + `GET /api/etl/status` (القفل الأحادي جاهز) + جدولة `scheduler.build_scheduler` ليلاً.
+5. **تصدير** Excel/PDF.
 
-## ⚠️ دروس حرجة (أخطاء وقعتُ فيها — لا تكرّرها)
-- **الأقساط (الأهم):** `PremiumPays` صف **لكل قسط**، و**`PremiumPays.Amount` = الرصيد المتبقّي للقسط، لا المدفوع**. مدفوع كاملاً→`Amount=0`؛ غير مدفوع→`=PremiumPayAmount`؛ جزئي→المتبقّي. مُسوّى=`PremiumState∈(3,4)` أو (`Amount=0` و `DatePay>'1900-01-02'`). النقد=`MAX(0, PremiumPayAmount−Amount−Discount)`. تاريخ الاستحقاق=`PremiumPays.Date`. **الأرقام الصحيحة:** قائم ≈**1.26B**، مُحصّل ≈**5.65B**، خصم 0.15B (اسمي 7.12B). **لا تستخدم منطق `build_excel.py:get_installments_summary` (مقلوب).** اعتمد `MssqlDriver`.
-- **العملة:** `Amount1` بالدينار دائماً — **لا تضربه بـ `Rate1`**. دائماً فلتر `Deleted=0` و `ISNULL(IsEdit,0)=0` واستبعد السندات المستقبلية.
+## عالِجها في/قبل الخطة 2 (من المراجعة — مدوّنة في الذاكرة)
+- **قائمة جداول مسموحة** في `etl/load.py` (حقن كامن) قبل أن تلمسه أي مدخلات مستخدم.
+- **قيود فرادة:** `scenario_adjustments(scenario_id,series_key,year_month)` · `supplier_caps(supplier_id,effective_from)` · `payment_plan_lines(payment_plan_id,supplier_id)` · سيناريو أساسي واحد (partial unique على `is_baseline`). (هجرة جديدة.)
+- **ربط `audit_log`** بكل كتابة إدارية · **مُحقّق `app_secret_key`** غير فارغ قبل الجلسات.
+- `numpy` لـ pyproject · لفّ pymssql بـ SQLAlchemy (تحذير DBAPI2) · فئة `OpType=1&to_type=2110` (سحب رأس مال ~14M مُهمَل).
+
+## قرارات مثبّتة (لا تغيّرها دون إذن المالك)
+FastAPI + React/Vite · مستخدم واحد محلي · ETL ليلي → PostgreSQL منفصلة · `AlBaytAlSaeid` قراءة فقط · التصنيف `OperationsType` + الحساب المقابل (يلتقط الصيرفة) · الصيرفة الخيار 1 (توزيع لموردي الدينار فقط) · Asia/Baghdad · تحميل ذرّي.
+
+## ⚠️ دروس حرجة (لا تكرّرها)
+- **الأقساط:** `PremiumPays.Amount` = الرصيد المتبقّي لا المدفوع (DC-System)؛ قائم ≈1.26–1.32B. **لا منطق `build_excel.py` المقلوب.**
+- `Amount1` بالدينار — **لا تضربه بـ `Rate1`**. فلتر `Deleted=0` و`IsEdit=0` واستبعد المستقبلية.
+- الرصيد الافتتاحي سالب (back-solve + نقص بيانات الصناديق)؛ `reconciliation_residual_m=0` حتى تتراكم لقطات `balances_snapshot` (يصير حقيقياً تلقائياً مع الزمن). اعرض الرصيد الجاري كاتجاه نسبي لا رقماً مطلقاً.
+
+## ⏸️ مؤجّل للإنتاج (بقرار المالك — لا تنفّذه الآن)
+كلمة مرور SA المكشوفة (`build_excel.py:29` + تاريخ git) → تدوير + نقل لـ`.env` + `git filter-repo` (يمسح أيضاً تاريخ ملفات Excel دفعةً). وربط MSSQL على مستوى الشبكة/جدار الحماية (برنامج المحاسبة يصله عبر LAN).
 
 ## البيئة
-- Docker: الحاوية `mssql-server` (اسم الخدمة `mssql`، منفذ 1433). كلمة مرور SA في `/Users/ak/Documents/sqlserver-docker/docker-compose.yml` — **انقلها إلى `.env` وأنشئ مستخدم قراءة-فقط** أول الأمر.
-- compose الموجود: `/Users/ak/Documents/sqlserver-docker/docker-compose.yml`؛ شبكة المشروع `sqlserver-docker_default` (الخدمات الجديدة تنضم إليها وتصل لـ MSSQL باسم `mssql`).
-
-## ابدأ بـ
-1. تأكيد أن Docker والحاوية `mssql-server` يعملان (`docker ps`).
-2. تنفيذ **الخطة 0 — Chunk B ثم C** عبر subagent-driven-development، مع الالتزام بعد كل مهمة على فرع `cashflow-web`.
-3. ثم الخطط 1 → 4.
-
-عند أي حساب أقساط/دفعات: ارجع إلى `MssqlDriver` في DC-System و`cashflow-web/docs/discovery/01`.
+- venv بـ **python3.12** في `cashflow-web/backend/.venv` (شغّل: `cd cashflow-web/backend && .venv/bin/python -m pytest`).
+- Postgres: حاوية `cashflow-postgres` على `127.0.0.1:5433` (قاعدتان: `cashflow` مملوءة + `cashflow_test`). MSSQL: `mssql-server`، مستخدم `cashflow_ro`.
+- الأسرار في `cashflow-web/.env` (غير متعقّب). تشغيل ETL يدوياً: `from app.etl.pipeline import run_etl; from app.etl.extract import connect_mssql` + session لـ `settings.postgres_url`.
+- تأكّد أولاً: `docker ps | grep -E 'mssql-server|cashflow-postgres'`.
