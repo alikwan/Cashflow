@@ -17,3 +17,7 @@ frontend/dist/
 *.bin
 .DS_Store
 ~$*
+
+# مخرجات مالية حسّاسة — لا تُدفع للـ git (تُولَّد محلياً من build_excel.py)
+*.xlsx
+analysis/output/
