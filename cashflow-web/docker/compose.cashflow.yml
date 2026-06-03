@@ -18,7 +18,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5433:5432"
+      # bind to loopback only — nothing external needs the published port
+      # (the backend reaches Postgres via the Docker network as 'postgres:5432').
+      - "127.0.0.1:5433:5432"
     volumes:
       - cashflow_pgdata:/var/lib/postgresql/data
     networks:
