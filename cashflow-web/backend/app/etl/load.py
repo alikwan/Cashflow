@@ -24,6 +24,20 @@ import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
+# Full set of analytical tables that ETL is permitted to write.
+# Defense-in-depth: _replace_one validates `table` against this set before
+# executing any SQL — prevents accidental or malicious writes to other tables
+# if a caller ever passes user-controlled input.
+ALLOWED_TABLES: frozenset[str] = frozenset({
+    "monthly_cashflow",
+    "per_supplier_monthly",
+    "seasonal_index",
+    "forecast_base",
+    "balances_snapshot",
+    "installments_summary",
+    "installments_aging",
+})
+
 # Tables whose PK includes snapshot_date — we keep prior dates, replacing only
 # the row(s) matching today's date.
 SNAPSHOT_TABLES: frozenset[str] = frozenset({
@@ -74,6 +88,15 @@ def _replace_one(
     int
         Number of rows inserted.
     """
+    # --- allow-list validation (defense-in-depth before the API lands) ---
+    if table not in ALLOWED_TABLES:
+        raise ValueError(f"refusing to load unknown table: {table!r}")
+    if date_col is not None and date_col != "snapshot_date":
+        raise ValueError(
+            f"invalid date_col {date_col!r}: only 'snapshot_date' is permitted"
+        )
+    # --- end validation ---
+
     if df.empty:
         return 0
 
@@ -96,7 +119,12 @@ def _replace_one(
             {"d": date_val},
         )
     else:
-        conn.execute(text(f"TRUNCATE TABLE {table}"))
+        # TRUNCATE is faster on Postgres; SQLite (used in tests) only supports DELETE.
+        dialect = conn.dialect.name
+        if dialect == "postgresql":
+            conn.execute(text(f"TRUNCATE TABLE {table}"))
+        else:
+            conn.execute(text(f"DELETE FROM {table}"))
 
     # Step 3 — copy from staging.
     conn.execute(

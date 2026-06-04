@@ -187,6 +187,12 @@ class SupplierCap(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
+    __table_args__ = (
+        # One cap row per supplier per effective date — makes cap creation idempotent.
+        # Both columns are NOT NULL, so a plain UNIQUE suffices (no NULL-deduplication issue).
+        UniqueConstraint("supplier_id", "effective_from", name="uq_supplier_cap_effective"),
+    )
+
 
 class Scenario(Base):
     __tablename__ = "scenarios"
@@ -201,6 +207,19 @@ class Scenario(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    __table_args__ = (
+        # At most ONE baseline scenario — enforced as a partial unique index because
+        # an ordinary UNIQUE on is_baseline=True/False would be too broad.
+        # SQLite stores booleans as 0/1; Postgres as TRUE/FALSE — both forms handled.
+        Index(
+            "uq_one_baseline_scenario",
+            "is_baseline",
+            unique=True,
+            postgresql_where=text("is_baseline"),
+            sqlite_where=text("is_baseline = 1"),
+        ),
     )
 
 
@@ -263,6 +282,22 @@ class ScenarioAdjustment(Base):
     override_value_m: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
     year_month: Mapped[str | None] = mapped_column(String(7), nullable=True)
 
+    __table_args__ = (
+        # For non-NULL year_month: one row per (scenario, series_key, month).
+        UniqueConstraint("scenario_id", "series_key", "year_month", name="uq_scenario_adj"),
+        # For NULL year_month (the "all-months" global override): a plain UNIQUE above
+        # will NOT block two NULLs in Postgres (NULLs are distinct in UNIQUE), so we
+        # also add a partial unique index limited to the NULL case.
+        Index(
+            "uq_scenario_adj_all_months",
+            "scenario_id",
+            "series_key",
+            unique=True,
+            postgresql_where=text("year_month IS NULL"),
+            sqlite_where=text("year_month IS NULL"),
+        ),
+    )
+
 
 class PaymentPlan(Base):
     __tablename__ = "payment_plans"
@@ -307,6 +342,11 @@ class PaymentPlanLine(Base):
     allocated_m: Mapped[Decimal] = mapped_column(Numeric, default=0)
     actual_paid_m: Mapped[Decimal] = mapped_column(Numeric, default=0)
     variance_m: Mapped[Decimal] = mapped_column(Numeric, default=0)
+
+    __table_args__ = (
+        # One line per supplier per plan — both columns are NOT NULL, plain UNIQUE suffices.
+        UniqueConstraint("payment_plan_id", "supplier_id", name="uq_plan_line_supplier"),
+    )
 
 
 class Note(Base):
