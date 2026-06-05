@@ -122,20 +122,44 @@ def test_export_pdf_empty_db(client, auth):
 
 def test_export_pdf_without_arabic_font(client, seed_analytics, auth, monkeypatch):
     """
-    When _ARABIC_FONT_PATH is None the PDF builder must use Latin-only Helvetica
-    fallback text and return a valid PDF — no FPDFUnicodeEncodingException.
+    When BOTH the Arabic font is missing (_ARABIC_FONT_PATH=None) AND the
+    reshaper/bidi libraries are unavailable (_ARABIC_OK=False), the PDF builder
+    must fall back to Latin-only Helvetica text and return a valid PDF — it must
+    NOT raise FPDFUnicodeEncodingException (which would surface as a 500).
 
-    This simulates a Docker deployment where the font file is somehow missing
-    (belt-and-suspenders: the real fix is bundling the font, but the code must
-    be crash-safe regardless).
+    This is the full worst-case fallback: the real fix is bundling the font
+    (app/api/fonts/IBMPlexSansArabic-Regular.ttf), but the code must stay
+    crash-safe even if neither the font nor the shaping libraries are present.
+    """
+    import app.api.export as export_module
+
+    # No bundled/system font found AND no arabic-reshaper/bidi available.
+    monkeypatch.setattr(export_module, "_ARABIC_FONT_PATH", None)
+    monkeypatch.setattr(export_module, "_ARABIC_OK", False)
+
+    r = client.get("/api/export/pdf", cookies=auth)
+    assert r.status_code == 200, (
+        f"PDF export crashed in Helvetica fallback (status={r.status_code}): "
+        f"{r.text[:500]}"
+    )
+    assert r.content[:4] == b"%PDF", "Response is not a valid PDF"
+
+
+def test_export_pdf_without_arabic_font_empty_db(client, auth, monkeypatch):
+    """Helvetica fallback must also be crash-safe on an EMPTY analytical DB.
+
+    Empty DB exercises the zero-value / 'no data' label branches (e.g. the
+    'FY totals: no data' row), which must still avoid sending raw Arabic to
+    Helvetica.
     """
     import app.api.export as export_module
 
     monkeypatch.setattr(export_module, "_ARABIC_FONT_PATH", None)
+    monkeypatch.setattr(export_module, "_ARABIC_OK", False)
 
     r = client.get("/api/export/pdf", cookies=auth)
     assert r.status_code == 200, (
-        f"PDF export crashed without Arabic font (status={r.status_code}): "
-        f"{r.text[:500]}"
+        f"PDF export crashed in Helvetica fallback on empty DB "
+        f"(status={r.status_code}): {r.text[:500]}"
     )
     assert r.content[:4] == b"%PDF", "Response is not a valid PDF"

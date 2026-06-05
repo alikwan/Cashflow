@@ -95,6 +95,27 @@ for _p in _FONT_CANDIDATES:
         break
 
 
+# Common non-latin-1 punctuation → ASCII, used only on the Helvetica fallback
+# path so the core-font (latin-1) encoder never raises FPDFUnicodeEncodingException.
+_LATIN1_PUNCT = {
+    "—": "-", "–": "-", "−": "-", "…": "...",
+    "“": '"', "”": '"', "‘": "'", "’": "'", " ": " ",
+}
+
+
+def _latin1_safe(text: str) -> str:
+    """Make a string safe for fpdf2's core (Helvetica/latin-1) encoder.
+
+    Used ONLY when no Unicode font is available. Maps common typographic
+    punctuation to ASCII, then replaces any remaining non-latin-1 character
+    with '?' so a stray value (e.g. an em-dash placeholder or unexpected
+    Arabic) can never crash the PDF export with FPDFUnicodeEncodingException.
+    """
+    for bad, good in _LATIN1_PUNCT.items():
+        text = text.replace(bad, good)
+    return text.encode("latin-1", "replace").decode("latin-1")
+
+
 # ---------------------------------------------------------------------------
 # Excel workbook builder
 # ---------------------------------------------------------------------------
@@ -478,6 +499,12 @@ def build_summary_pdf(db: Session) -> bytes:
         for all static labels) is used with Helvetica so no Arabic reaches it.
         """
         label = rtext(label_ar) if use_arabic else (label_fallback or label_ar)
+        if not use_arabic:
+            # Helvetica core font is latin-1 only — sanitize BOTH the label
+            # (in case a fallback was omitted) and the value (which may carry
+            # an em-dash placeholder or other non-latin-1 punctuation).
+            label = _latin1_safe(label)
+            value = _latin1_safe(value)
         set_arabic_font(10)
         pdf.set_x(pdf.l_margin)
         w = pdf.w - pdf.l_margin - pdf.r_margin
