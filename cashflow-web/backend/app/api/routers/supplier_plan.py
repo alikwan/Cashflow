@@ -1,7 +1,7 @@
 """
 app/api/routers/supplier_plan.py
 ==================================
-GET /api/supplier-plan?month=YYYY-MM&scenarioId=<optional>
+GET /api/supplier-plan?month=YYYY-MM&scenario_id=<optional>
 
 Computes the predictive dinar-pool distribution for one forecast month using
 Option-1: dollar suppliers are funded via siyrafa and excluded from the pool.
@@ -40,7 +40,7 @@ def get_supplier_plan(
             pattern=r"^\d{4}-(0[1-9]|1[0-2])$",
         ),
     ],
-    scenarioId: int | None = Query(default=None),  # noqa: N803 — matches spec param name
+    scenario_id: int | None = Query(default=None),  # noqa: ARG001 — accepted for API symmetry; per-scenario plan is a future extension
     db: Session = Depends(get_session),
     _user=Depends(get_current_user),
 ) -> SupplierPlanResponse:

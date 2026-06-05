@@ -564,7 +564,7 @@ def test_c3_endpoints_require_auth(client, path):
 # ---------------------------------------------------------------------------
 
 def test_forecast_contract(client, seed_analytics, auth):
-    r = client.get("/api/forecast?scenarioId=1", cookies=auth).json()
+    r = client.get("/api/forecast?scenario_id=1", cookies=auth).json()
     assert {"forecast", "cash_paths", "fc_totals", "scenarios", "mape", "confidence"} <= set(r)
 
 
@@ -649,8 +649,8 @@ def test_forecast_fc_totals_values_consistent(client, seed_analytics, auth):
 
 
 def test_forecast_graceful_missing_scenarioid(client, seed_analytics, auth):
-    """Non-existent scenarioId doesn't crash — falls back to global assumptions."""
-    r = client.get("/api/forecast?scenarioId=9999", cookies=auth)
+    """Non-existent scenario_id doesn't crash — falls back to global assumptions."""
+    r = client.get("/api/forecast?scenario_id=9999", cookies=auth)
     assert r.status_code == 200
     assert "forecast" in r.json()
 

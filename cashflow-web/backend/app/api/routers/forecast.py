@@ -1,7 +1,7 @@
 """
 app/api/routers/forecast.py
 ============================
-GET /api/forecast?scenarioId=<int optional>
+GET /api/forecast?scenario_id=<int optional>
 
 Projects the ETL-computed `forecast_base` (engine='seasonal') through 3 standard
 scenarios (base / opt / pess) and returns multi-scenario cash paths, totals, MAPE,
@@ -53,7 +53,7 @@ router = APIRouter(prefix="/api/forecast", tags=["read"])
 
 @router.get("", response_model=ForecastResponse)
 def get_forecast(
-    scenarioId: Optional[int] = Query(default=None),  # noqa: N803 — matches spec param name
+    scenario_id: Optional[int] = Query(default=None),
     db: Session = Depends(get_session),
     _user=Depends(get_current_user),
 ) -> ForecastResponse:
@@ -73,16 +73,16 @@ def get_forecast(
         global_assump and global_assump.income_growth_pct is not None
     ) else 1.0
 
-    # scenarioId override: if a Scenario row with a per-scenario income_growth_pct
+    # scenario_id override: if a Scenario row with a per-scenario income_growth_pct
     # exists, use it — otherwise silently fall back to the global value.
-    if scenarioId is not None:
+    if scenario_id is not None:
         scenario_row: Scenario | None = (
-            db.query(Scenario).filter(Scenario.id == scenarioId).first()
+            db.query(Scenario).filter(Scenario.id == scenario_id).first()
         )
         if scenario_row is not None:
             sc_assump: Assumption | None = (
                 db.query(Assumption)
-                .filter(Assumption.scenario_id == scenarioId)
+                .filter(Assumption.scenario_id == scenario_id)
                 .first()
             )
             if sc_assump is not None and sc_assump.income_growth_pct is not None:
