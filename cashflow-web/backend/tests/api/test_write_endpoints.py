@@ -371,3 +371,382 @@ class TestAssumptions:
             cookies=auth,
         )
         assert put_r.status_code == 422
+
+
+# ===========================================================================
+# D2: Payment Plans
+# ===========================================================================
+
+class TestPaymentPlans:
+    def test_create_payment_plan_returns_201_with_lines(self, client, seed_analytics, auth):
+        """POST /api/payment-plans → 201 with plan header + lines for each supplier."""
+        client.post("/api/scenarios", json={"name": "base", "kind": "base"}, cookies=auth)
+        r = client.post(
+            "/api/payment-plans",
+            json={"year_month": "2026-05", "scenario_id": 1},
+            cookies=auth,
+        )
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["year_month"] == "2026-05"
+        assert body["status"] == "draft"
+        assert isinstance(body["lines"], list)
+        assert len(body["lines"]) > 0
+        # Each line must have the required fields
+        for line in body["lines"]:
+            assert "supplier_id" in line
+            assert "allocated_m" in line
+            assert "actual_paid_m" in line
+
+    def test_duplicate_payment_plan_conflict(self, client, seed_analytics, auth):
+        """Creating the same (year_month, scenario_id) twice → second is 409."""
+        client.post("/api/scenarios", json={"name": "base", "kind": "base"}, cookies=auth)
+        p1 = client.post(
+            "/api/payment-plans",
+            json={"year_month": "2026-05", "scenario_id": 1},
+            cookies=auth,
+        )
+        p2 = client.post(
+            "/api/payment-plans",
+            json={"year_month": "2026-05", "scenario_id": 1},
+            cookies=auth,
+        )
+        assert p1.status_code == 201
+        assert p2.status_code == 409
+        assert p2.json()["error"]["code"] == "conflict"
+
+    def test_create_payment_plan_unknown_scenario_404(self, client, seed_analytics, auth):
+        """scenario_id that doesn't exist → 404."""
+        r = client.post(
+            "/api/payment-plans",
+            json={"year_month": "2026-05", "scenario_id": 9999},
+            cookies=auth,
+        )
+        assert r.status_code == 404
+
+    def test_payment_plan_reconcile_fills_actuals(self, client, seed_analytics, auth):
+        """POST /reconcile fills actual_paid_m on each line and sets variance_m."""
+        client.post("/api/scenarios", json={"name": "base", "kind": "base"}, cookies=auth)
+        pid = client.post(
+            "/api/payment-plans",
+            json={"year_month": "2026-05", "scenario_id": 1},
+            cookies=auth,
+        ).json()["id"]
+        r = client.post(f"/api/payment-plans/{pid}/reconcile", cookies=auth)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert "lines" in body
+        assert all("actual_paid_m" in line for line in body["lines"])
+        # variance_m == allocated_m − actual_paid_m for every line
+        for line in body["lines"]:
+            assert abs(line["variance_m"] - (line["allocated_m"] - line["actual_paid_m"])) < 0.001
+
+    def test_reconcile_is_idempotent(self, client, seed_analytics, auth):
+        """Running reconcile twice returns identical lines."""
+        client.post("/api/scenarios", json={"name": "base", "kind": "base"}, cookies=auth)
+        pid = client.post(
+            "/api/payment-plans",
+            json={"year_month": "2026-05", "scenario_id": 1},
+            cookies=auth,
+        ).json()["id"]
+        r1 = client.post(f"/api/payment-plans/{pid}/reconcile", cookies=auth).json()
+        r2 = client.post(f"/api/payment-plans/{pid}/reconcile", cookies=auth).json()
+        assert r1["lines"] == r2["lines"]
+
+    def test_reconcile_audited(self, client, seed_analytics, auth, _testing_session):
+        """Reconcile action is written to audit_log."""
+        client.post("/api/scenarios", json={"name": "base", "kind": "base"}, cookies=auth)
+        pid = client.post(
+            "/api/payment-plans",
+            json={"year_month": "2026-05", "scenario_id": 1},
+            cookies=auth,
+        ).json()["id"]
+        client.post(f"/api/payment-plans/{pid}/reconcile", cookies=auth)
+        rows = _audit_rows(_testing_session, "reconcile_payment_plan")
+        assert len(rows) >= 1
+
+    def test_update_payment_plan_status(self, client, seed_analytics, auth):
+        """PUT /api/payment-plans/{id} can change status to approved."""
+        client.post("/api/scenarios", json={"name": "base", "kind": "base"}, cookies=auth)
+        pid = client.post(
+            "/api/payment-plans",
+            json={"year_month": "2026-05", "scenario_id": 1},
+            cookies=auth,
+        ).json()["id"]
+        r = client.put(f"/api/payment-plans/{pid}", json={"status": "approved"}, cookies=auth)
+        assert r.status_code == 200
+        assert r.json()["status"] == "approved"
+        assert r.json()["approved_at"] is not None
+
+    def test_get_payment_plan_by_id(self, client, seed_analytics, auth):
+        """GET /api/payment-plans/{id} returns header + lines."""
+        client.post("/api/scenarios", json={"name": "base", "kind": "base"}, cookies=auth)
+        pid = client.post(
+            "/api/payment-plans",
+            json={"year_month": "2026-05", "scenario_id": 1},
+            cookies=auth,
+        ).json()["id"]
+        r = client.get(f"/api/payment-plans/{pid}", cookies=auth)
+        assert r.status_code == 200
+        assert r.json()["id"] == pid
+        assert "lines" in r.json()
+
+    def test_get_payment_plan_not_found(self, client, seed_analytics, auth):
+        """GET /api/payment-plans/9999 → 404."""
+        r = client.get("/api/payment-plans/9999", cookies=auth)
+        assert r.status_code == 404
+
+    def test_list_payment_plans(self, client, seed_analytics, auth):
+        """GET /api/payment-plans returns a list."""
+        client.post("/api/scenarios", json={"name": "base", "kind": "base"}, cookies=auth)
+        client.post(
+            "/api/payment-plans",
+            json={"year_month": "2026-05", "scenario_id": 1},
+            cookies=auth,
+        )
+        r = client.get("/api/payment-plans", cookies=auth)
+        assert r.status_code == 200
+        assert isinstance(r.json(), list)
+        assert len(r.json()) == 1
+
+    def test_payment_plans_require_auth(self, client, seed_analytics):
+        """GET /api/payment-plans without session → 401."""
+        assert client.get("/api/payment-plans").status_code == 401
+        assert client.post(
+            "/api/payment-plans",
+            json={"year_month": "2026-05", "scenario_id": 1},
+        ).status_code == 401
+
+    def test_create_payment_plan_audited(self, client, seed_analytics, auth, _testing_session):
+        """POST /api/payment-plans writes a create_payment_plan audit row."""
+        client.post("/api/scenarios", json={"name": "base", "kind": "base"}, cookies=auth)
+        client.post(
+            "/api/payment-plans",
+            json={"year_month": "2026-05", "scenario_id": 1},
+            cookies=auth,
+        )
+        rows = _audit_rows(_testing_session, "create_payment_plan")
+        assert len(rows) == 1
+
+
+# ===========================================================================
+# D2: Notes
+# ===========================================================================
+
+class TestNotes:
+    def test_create_and_list_note(self, client, seed_analytics, auth):
+        """POST /api/notes → 201; GET lists it newest-first."""
+        r = client.post(
+            "/api/notes",
+            json={"target_type": "month", "target_key": "2026-05", "body": "ملاحظة تجريبية"},
+            cookies=auth,
+        )
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["body"] == "ملاحظة تجريبية"
+        assert body["target_type"] == "month"
+        assert body["target_key"] == "2026-05"
+        note_id = body["id"]
+
+        # GET lists it
+        list_r = client.get("/api/notes", cookies=auth)
+        assert list_r.status_code == 200
+        ids = [n["id"] for n in list_r.json()]
+        assert note_id in ids
+
+    def test_list_notes_filter_by_target(self, client, seed_analytics, auth):
+        """GET /api/notes?target_type=month&target_key=2026-05 filters correctly."""
+        client.post(
+            "/api/notes",
+            json={"target_type": "month", "target_key": "2026-05", "body": "May note"},
+            cookies=auth,
+        )
+        client.post(
+            "/api/notes",
+            json={"target_type": "month", "target_key": "2026-06", "body": "June note"},
+            cookies=auth,
+        )
+        r = client.get("/api/notes?target_type=month&target_key=2026-05", cookies=auth)
+        assert r.status_code == 200
+        notes = r.json()
+        assert all(n["target_key"] == "2026-05" for n in notes)
+        assert len(notes) == 1
+
+    def test_delete_note(self, client, seed_analytics, auth):
+        """DELETE /api/notes/{id} removes the note; 404 on second delete."""
+        r = client.post(
+            "/api/notes",
+            json={"target_type": "supplier", "target_key": "1001", "body": "للحذف"},
+            cookies=auth,
+        )
+        note_id = r.json()["id"]
+
+        del_r = client.delete(f"/api/notes/{note_id}", cookies=auth)
+        assert del_r.status_code == 200
+
+        # Second delete → 404
+        del_r2 = client.delete(f"/api/notes/{note_id}", cookies=auth)
+        assert del_r2.status_code == 404
+
+    def test_delete_note_audited(self, client, seed_analytics, auth, _testing_session):
+        """Delete note writes a delete_note audit row."""
+        r = client.post(
+            "/api/notes",
+            json={"target_type": "month", "target_key": "2026-05", "body": "test"},
+            cookies=auth,
+        )
+        note_id = r.json()["id"]
+        client.delete(f"/api/notes/{note_id}", cookies=auth)
+        rows = _audit_rows(_testing_session, "delete_note")
+        assert len(rows) == 1
+
+    def test_create_note_audited(self, client, seed_analytics, auth, _testing_session):
+        """POST /api/notes writes a create_note audit row."""
+        client.post(
+            "/api/notes",
+            json={"target_type": "month", "target_key": "2026-05", "body": "audit test"},
+            cookies=auth,
+        )
+        rows = _audit_rows(_testing_session, "create_note")
+        assert len(rows) == 1
+
+    def test_notes_require_auth(self, client, seed_analytics):
+        """GET/POST without session → 401."""
+        assert client.get("/api/notes").status_code == 401
+        assert client.post(
+            "/api/notes",
+            json={"target_type": "month", "target_key": "x", "body": "x"},
+        ).status_code == 401
+
+
+# ===========================================================================
+# D2: Alerts
+# ===========================================================================
+
+class TestAlerts:
+    def test_get_active_alerts(self, client, seed_analytics, seed_alerts, auth):
+        """GET /api/alerts returns active (non-resolved) alerts, newest first."""
+        r = client.get("/api/alerts", cookies=auth)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert "alerts" in body
+        statuses = [a["status"] for a in body["alerts"]]
+        assert "resolved" not in statuses
+        assert len(body["alerts"]) == 2  # new + read
+
+    def test_alert_ack(self, client, seed_analytics, seed_alerts, auth):
+        """POST /api/alerts/{id}/ack changes status to 'read'; GET reflects it."""
+        # Get the first active alert (status='new')
+        alerts = client.get("/api/alerts", cookies=auth).json()["alerts"]
+        new_alert = next(a for a in alerts if a["status"] == "new")
+        aid = new_alert["id"]
+
+        r = client.post(f"/api/alerts/{aid}/ack", cookies=auth)
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "read"
+
+        # Verify it persists
+        updated = client.get("/api/alerts", cookies=auth).json()["alerts"]
+        match = next(a for a in updated if a["id"] == aid)
+        assert match["status"] == "read"
+
+    def test_alert_ack_idempotent(self, client, seed_analytics, seed_alerts, auth):
+        """ACKing an already-read alert keeps it 'read' (idempotent)."""
+        alerts = client.get("/api/alerts", cookies=auth).json()["alerts"]
+        read_alert = next(a for a in alerts if a["status"] == "read")
+        aid = read_alert["id"]
+
+        r = client.post(f"/api/alerts/{aid}/ack", cookies=auth)
+        assert r.status_code == 200
+        assert r.json()["status"] == "read"
+
+    def test_alert_ack_not_found(self, client, seed_analytics, seed_alerts, auth):
+        """ACK unknown alert id → 404."""
+        r = client.post("/api/alerts/99999/ack", cookies=auth)
+        assert r.status_code == 404
+
+    def test_alert_ack_audited(self, client, seed_analytics, seed_alerts, auth, _testing_session):
+        """ACK writes an ack_alert audit row."""
+        alerts = client.get("/api/alerts", cookies=auth).json()["alerts"]
+        aid = alerts[0]["id"]
+        client.post(f"/api/alerts/{aid}/ack", cookies=auth)
+        rows = _audit_rows(_testing_session, "ack_alert")
+        assert len(rows) == 1
+
+    def test_alerts_require_auth(self, client, seed_analytics, seed_alerts):
+        """GET /api/alerts without session → 401."""
+        assert client.get("/api/alerts").status_code == 401
+
+
+# ===========================================================================
+# D2: Settings
+# ===========================================================================
+
+class TestSettings:
+    def test_get_settings_returns_defaults_when_no_row(self, client, auth):
+        """GET /api/settings with no AppSettings row returns defaults."""
+        r = client.get("/api/settings", cookies=auth)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert "display" in body
+        assert "assumptions" in body
+        d = body["display"]
+        assert d["accent"] == "أزرق"
+        assert d["show_alert"] is True
+        assert d["neg_threshold_m"] == 0
+        assert d["over_cap_warn"] is True
+
+    def test_get_settings_with_global_assumption(self, client, seed_analytics, auth):
+        """GET /api/settings with seed_analytics (has global assumption) includes assumptions."""
+        r = client.get("/api/settings", cookies=auth)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["assumptions"]["usd_rate"] == 1350.0
+
+    def test_put_settings_persists_display(self, client, auth):
+        """PUT /api/settings display fields → GET returns updated values."""
+        r = client.put(
+            "/api/settings",
+            json={"display": {"accent": "أخضر", "show_alert": False, "neg_threshold_m": 5.0}},
+            cookies=auth,
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["display"]["accent"] == "أخضر"
+        assert body["display"]["show_alert"] is False
+
+        # Round-trip
+        r2 = client.get("/api/settings", cookies=auth)
+        assert r2.json()["display"]["accent"] == "أخضر"
+        assert r2.json()["display"]["show_alert"] is False
+
+    def test_put_settings_persists_assumptions(self, client, auth):
+        """PUT /api/settings assumptions fields → GET returns updated values."""
+        r = client.put(
+            "/api/settings",
+            json={"assumptions": {"usd_rate": 1400.0, "unexpected_reserve_m": 20.0}},
+            cookies=auth,
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["assumptions"]["usd_rate"] == 1400.0
+        assert body["assumptions"]["unexpected_reserve_m"] == 20.0
+
+        # Round-trip
+        r2 = client.get("/api/settings", cookies=auth)
+        assert r2.json()["assumptions"]["usd_rate"] == 1400.0
+
+    def test_put_settings_audited(self, client, auth, _testing_session):
+        """PUT /api/settings writes an update_settings audit row."""
+        client.put(
+            "/api/settings",
+            json={"display": {"accent": "أحمر"}},
+            cookies=auth,
+        )
+        rows = _audit_rows(_testing_session, "update_settings")
+        assert len(rows) == 1
+
+    def test_settings_require_auth(self, client):
+        """GET/PUT /api/settings without session → 401."""
+        assert client.get("/api/settings").status_code == 401
+        assert client.put("/api/settings", json={}).status_code == 401

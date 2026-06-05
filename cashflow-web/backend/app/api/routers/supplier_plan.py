@@ -9,30 +9,24 @@ Option-1: dollar suppliers are funded via siyrafa and excluded from the pool.
 Pool = forecast_in − salaries − purchases − refunds − partners − siyrafa − reserve
        (all values read from forecast_base for the requested month)
 
-Calls domain.allocation.compute_pool + domain.allocation.allocate_dinar.
+Calls domain.allocation.compute_pool + domain.allocation.allocate_dinar via
+the shared compute_month_allocation helper in app.api.planning.
+
 USD suppliers get allocated_m=0 by design (the 'allocate_dinar' function handles this).
 
 Auth: requires valid session cookie (get_current_user dependency).
 """
 from __future__ import annotations
 
-from datetime import date
-from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_session
-from app.api.routers._utils import load_active_caps
+from app.api.planning import compute_month_allocation
 from app.api.schemas import AllocEntry, SupplierPlanResponse
-from app.db.models import (
-    Assumption,
-    ForecastBase,
-    PerSupplierMonthly,
-    Supplier,
-)
-from app.domain.allocation import allocate_dinar, compute_pool
+from app.db.models import Assumption, PerSupplierMonthly
 
 router = APIRouter(prefix="/api/supplier-plan", tags=["read"])
 
@@ -63,108 +57,17 @@ def get_supplier_plan(
     ) else 15.0
 
     # ------------------------------------------------------------------
-    # 2. Read forecast_base values for the requested month
+    # 2. Compute allocation via shared planner
     # ------------------------------------------------------------------
-    fb_rows: list[ForecastBase] = (
-        db.query(ForecastBase)
-        .filter(
-            ForecastBase.engine == "seasonal",
-            ForecastBase.year_month == month,
-        )
-        .all()
-    )
-    series: dict[str, float] = {r.series_key: float(r.value_m) for r in fb_rows}
+    plan = compute_month_allocation(db, month, reserve_m)
 
-    forecast_in  = series.get("cash_in",       0.0)
-    salaries     = series.get("out_salaries",   0.0)
-    purchases    = series.get("out_purchases",  0.0)
-    refunds      = series.get("out_refunds",    0.0)
-    partners     = series.get("out_drawings",   0.0)
-    siyrafa      = series.get("out_siyrafa",    0.0)
+    pool_m     = plan["pool_m"]
+    alloc_raw  = plan["alloc"]
+    leftover_m = plan["leftover_m"]
+    all_psm: list[PerSupplierMonthly] = plan["_all_psm"]
 
     # ------------------------------------------------------------------
-    # 3. Compute the dinar pool (domain function)
-    # ------------------------------------------------------------------
-    pool_m: float = compute_pool(
-        forecast_in, salaries, purchases, refunds, partners, siyrafa, reserve_m
-    )
-
-    # ------------------------------------------------------------------
-    # 4. Build the suppliers list for allocate_dinar
-    #    - ordered by display_order
-    #    - cap = most-recent effective supplier_cap (effective_from <= today)
-    #    - share = historical paid_m fraction among dinar suppliers
-    # ------------------------------------------------------------------
-    today = date.today()
-
-    suppliers: list[Supplier] = (
-        db.query(Supplier)
-        .filter(Supplier.active.is_(True))
-        .order_by(Supplier.display_order.asc())
-        .all()
-    )
-
-    supplier_ids  = [sup.id         for sup in suppliers]
-    account_ids   = [sup.account_id for sup in suppliers]
-
-    # Active cap per supplier — one bulk query (avoids N+1 per-supplier queries).
-    active_cap: dict[int, float] = load_active_caps(db, supplier_ids, today)
-
-    # Historical paid_m totals per supplier account_id — filtered to active suppliers.
-    # Reused below for per-month actuals (step 6).
-    all_psm: list[PerSupplierMonthly] = (
-        db.query(PerSupplierMonthly)
-        .filter(PerSupplierMonthly.supplier_account_id.in_(account_ids))
-        .all()
-    )
-    paid_totals: dict[int, float] = {}
-    for row in all_psm:
-        paid_totals[row.supplier_account_id] = (
-            paid_totals.get(row.supplier_account_id, 0.0) + float(row.paid_m)
-        )
-
-    # Sum of paid_m for dinar (non-USD) suppliers only
-    dinar_total: float = sum(
-        paid_totals.get(sup.account_id, 0.0)
-        for sup in suppliers
-        if sup.currency != "USD"
-    )
-    dinar_count: int = sum(1 for sup in suppliers if sup.currency != "USD")
-
-    # Build supplier dict list expected by allocate_dinar:
-    # {id, name, currency, cap, share}
-    # USD suppliers have share=0 (allocate_dinar zeroes them anyway).
-    # A dinar supplier with zero payment history gets share=0 (excluded from pool
-    # until it accumulates history); the equal-fallback only applies when ALL dinar
-    # suppliers have zero history.
-    supplier_list: list[dict] = []
-    for sup in suppliers:
-        cap: float = active_cap.get(sup.id, 0.0)
-
-        if sup.currency == "USD":
-            share = 0.0
-        elif dinar_total > 0:
-            share = paid_totals.get(sup.account_id, 0.0) / dinar_total
-        else:
-            # Fallback: equal shares among dinar suppliers
-            share = 1.0 / dinar_count if dinar_count > 0 else 0.0
-
-        supplier_list.append({
-            "id":       sup.account_id,
-            "name":     sup.name,
-            "currency": sup.currency or "IQD",
-            "cap":      cap,
-            "share":    share,
-        })
-
-    # ------------------------------------------------------------------
-    # 5. Run the allocation (domain function)
-    # ------------------------------------------------------------------
-    result = allocate_dinar(pool_m, supplier_list)
-
-    # ------------------------------------------------------------------
-    # 6. Attach actual_paid_m for the requested month (optional, for UI)
-    #    Reuses the filtered per_supplier_monthly rows loaded in step 4.
+    # 3. Attach actual_paid_m for the requested month (optional, for UI)
     # ------------------------------------------------------------------
     actual_by_aid: dict[int, float] = {}
     for row in all_psm:
@@ -172,9 +75,9 @@ def get_supplier_plan(
             actual_by_aid[row.supplier_account_id] = float(row.paid_m)
 
     alloc_entries: list[AllocEntry] = []
-    for a in result["alloc"]:
+    for a in alloc_raw:
         alloc_entries.append(AllocEntry(
-            id=a["id"],
+            id=a["id"],           # account_id — unchanged response field
             name=a["name"],
             currency=a["currency"],
             allocated_m=a["allocated_m"],
@@ -185,5 +88,5 @@ def get_supplier_plan(
         month=month,
         pool_m=pool_m,
         alloc=alloc_entries,
-        leftover_m=result["leftover_m"],
+        leftover_m=leftover_m,
     )

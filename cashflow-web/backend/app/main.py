@@ -126,6 +126,16 @@ def create_app() -> FastAPI:
     from app.api.routers.scenarios import router as scenarios_router
     application.include_router(scenarios_router)
 
+    # Write routers — D2: payment-plans, notes, alerts ack, settings
+    from app.api.routers.payment_plans import router as payment_plans_router
+    from app.api.routers.notes import router as notes_router
+    from app.api.routers.alerts import router as alerts_router
+    from app.api.routers.settings import router as settings_router
+    application.include_router(payment_plans_router)
+    application.include_router(notes_router)
+    application.include_router(alerts_router)
+    application.include_router(settings_router)
+
     return application
 
 

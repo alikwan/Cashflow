@@ -380,3 +380,137 @@ class SupplierPlanResponse(BaseModel):
     pool_m: float
     alloc: list[AllocEntry]
     leftover_m: float
+
+
+# ---------------------------------------------------------------------------
+# D2: Payment Plans
+# ---------------------------------------------------------------------------
+
+class PaymentPlanCreate(BaseModel):
+    """Body for POST /api/payment-plans."""
+    year_month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    scenario_id: int
+
+
+class PaymentPlanStatusUpdate(BaseModel):
+    """Body for PUT /api/payment-plans/{id}."""
+    status: str
+
+
+class PaymentPlanLineOut(BaseModel):
+    """One line in a payment plan response."""
+    id: int
+    supplier_id: int
+    planned_m: float
+    cap_applied_m: float
+    allocated_m: float
+    actual_paid_m: float
+    variance_m: float
+
+
+class PaymentPlanOut(BaseModel):
+    """Response for a PaymentPlan (header only, no lines)."""
+    id: int
+    year_month: str
+    scenario_id: int
+    pool_for_suppliers_m: float
+    reserve_m: float
+    status: str
+    created_by: Optional[int]
+    created_at: datetime
+    approved_at: Optional[datetime]
+
+
+class PaymentPlanDetailOut(BaseModel):
+    """Response for a PaymentPlan with lines."""
+    id: int
+    year_month: str
+    scenario_id: int
+    pool_for_suppliers_m: float
+    reserve_m: float
+    status: str
+    created_by: Optional[int]
+    created_at: datetime
+    approved_at: Optional[datetime]
+    lines: list[PaymentPlanLineOut]
+
+
+# ---------------------------------------------------------------------------
+# D2: Notes
+# ---------------------------------------------------------------------------
+
+class NoteCreate(BaseModel):
+    """Body for POST /api/notes."""
+    target_type: str
+    target_key: str
+    body: str
+
+
+class NoteOut(BaseModel):
+    """Response for a Note row."""
+    id: int
+    target_type: str
+    target_key: str
+    body: str
+    created_by: Optional[int]
+    created_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# D2: Alerts
+# ---------------------------------------------------------------------------
+
+class AlertDetailOut(_OrmBase):
+    """Full alert row (includes acknowledged_at)."""
+    id: int
+    alert_type: str
+    severity: Optional[str]
+    title: str
+    body: Optional[str]
+    related_key: Optional[str]
+    status: str
+    generated_at: datetime
+    acknowledged_at: Optional[datetime]
+
+
+class AlertsListOut(BaseModel):
+    """Response for GET /api/alerts."""
+    alerts: list[AlertDetailOut]
+
+
+# ---------------------------------------------------------------------------
+# D2: Settings
+# ---------------------------------------------------------------------------
+
+class DisplaySettings(BaseModel):
+    """Display preferences from AppSettings row."""
+    accent: str = "أزرق"
+    show_alert: bool = True
+    neg_threshold_m: float = 0
+    over_cap_warn: bool = True
+
+
+class AssumptionFields(BaseModel):
+    """Financial assumption fields from global Assumption row."""
+    usd_rate: Optional[float] = None
+    unexpected_reserve_m: Optional[float] = None
+    income_growth_pct: Optional[float] = None
+    in_growth_factor: Optional[float] = None
+    out_growth_factor: Optional[float] = None
+    cagr_floor: Optional[float] = None
+    cagr_cap: Optional[float] = None
+    forecast_horizon: Optional[int] = None
+    fiscal_year_start_month: Optional[int] = None
+    forecast_engine: Optional[str] = None
+
+
+class SettingsOut(BaseModel):
+    """Response for GET/PUT /api/settings."""
+    display: DisplaySettings
+    assumptions: AssumptionFields
+
+
+class SettingsUpdate(BaseModel):
+    """Body for PUT /api/settings — all sub-fields optional."""
+    display: Optional[DisplaySettings] = None
+    assumptions: Optional[AssumptionFields] = None
