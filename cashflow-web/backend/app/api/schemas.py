@@ -220,3 +220,69 @@ class InstallmentsResponse(BaseModel):
     summary: Optional[InstallmentsSummaryOut]
     aging: list[AgingBucketOut]
     top_debtors: list[BalanceEntryOut]
+
+
+# ---------------------------------------------------------------------------
+# /api/forecast  (C3)
+# ---------------------------------------------------------------------------
+
+class ScenarioValues(BaseModel):
+    """Per-scenario in/out/net for a single forecast month."""
+    in_m: float
+    out_m: float
+    net_m: float
+
+
+class ForecastMonthPoint(BaseModel):
+    """One forecast month with all three scenario projections."""
+    year_month: str
+    base: ScenarioValues
+    opt: ScenarioValues
+    pess: ScenarioValues
+
+
+class ScenarioTotals(BaseModel):
+    """Aggregated totals for one scenario over the full horizon."""
+    in_m: float
+    out_m: float
+    net_m: float
+    end_cash_m: float
+    min_cash_m: float
+
+
+class ScenarioMeta(BaseModel):
+    """Metadata for a single scenario."""
+    label: str
+    in_g: float
+    out_g: float
+
+
+class ForecastResponse(BaseModel):
+    """Response for GET /api/forecast."""
+    forecast: list[ForecastMonthPoint]
+    cash_paths: dict[str, list[float]]   # base/opt/pess → running cash list
+    fc_totals: dict[str, ScenarioTotals] # base/opt/pess → totals
+    scenarios: dict[str, ScenarioMeta]   # base/opt/pess → metadata
+    mape: Optional[float]
+    confidence: Optional[str]
+
+
+# ---------------------------------------------------------------------------
+# /api/supplier-plan  (C3)
+# ---------------------------------------------------------------------------
+
+class AllocEntry(BaseModel):
+    """One supplier's allocation in the monthly plan."""
+    id: int
+    name: str
+    currency: str
+    allocated_m: float
+    actual_paid_m: Optional[float] = None
+
+
+class SupplierPlanResponse(BaseModel):
+    """Response for GET /api/supplier-plan."""
+    month: str
+    pool_m: float
+    alloc: list[AllocEntry]
+    leftover_m: float

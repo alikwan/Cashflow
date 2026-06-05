@@ -111,10 +111,11 @@ def seed_analytics(_testing_session):
     """
     from app.db.models import (
         Assumption, EtlRun, InstallmentsSummary, MonthlyCashflow,
-        BalancesSnapshot, InstallmentsAging, PerSupplierMonthly,
+        BalancesSnapshot, InstallmentsAging, PerSupplierMonthly, ForecastBase,
     )
     from app.domain.forecast import fiscal_year_label
     from app.seed import seed_suppliers, seed_supplier_caps
+    from app.etl.pipeline import SERIES_COLS
 
     s = _testing_session()
     try:
@@ -315,6 +316,41 @@ def seed_analytics(_testing_session):
             snapshot_date=snap_date, bucket_key="b120",
             label="أكثر من 120 يوم", amount_m=Decimal("370"), count=800,
         ))
+
+        # --- ForecastBase rows (C3) ----------------------------------------
+        # 12 monthly rows per series for 2026-05 .. 2027-04, engine='seasonal'.
+        # Plausible value_m values (millions IQD):
+        #   cash_in≈110, out_suppliers≈20, out_drawings≈40, out_refunds≈5,
+        #   out_purchases≈10, out_salaries≈10, out_other≈5, out_siyrafa≈10
+        # mape set to 18.0 on cash_in → confidence='عالية' (threshold <25).
+        _SERIES_VALUES: dict[str, float] = {
+            "cash_in":       110.0,
+            "out_suppliers":  20.0,
+            "out_drawings":   40.0,
+            "out_refunds":     5.0,
+            "out_purchases":  10.0,
+            "out_salaries":   10.0,
+            "out_other":       5.0,
+            "out_siyrafa":    10.0,
+        }
+        # Build 2026-05 .. 2027-04 (12 months)
+        _fc_months = []
+        for _y, _m in [(2026, mo) for mo in range(5, 13)] + [(2027, mo) for mo in range(1, 5)]:
+            _fc_months.append(f"{_y}-{_m:02d}")
+        assert len(_fc_months) == 12
+
+        for series_key in SERIES_COLS:
+            _val = _SERIES_VALUES.get(series_key, 10.0)
+            _mape = Decimal("18.0") if series_key == "cash_in" else Decimal("20.0")
+            for ym in _fc_months:
+                s.add(ForecastBase(
+                    series_key=series_key,
+                    year_month=ym,
+                    engine="seasonal",
+                    value_m=Decimal(str(_val)),
+                    cagr=Decimal("0.05"),
+                    mape=_mape,
+                ))
 
         s.commit()
     finally:

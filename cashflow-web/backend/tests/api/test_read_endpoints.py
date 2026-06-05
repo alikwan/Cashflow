@@ -535,3 +535,179 @@ def test_installments_top_debtors_desc(client, seed_analytics, auth):
     r = client.get("/api/installments", cookies=auth).json()
     balances = [d["balance_m"] for d in r["top_debtors"]]
     assert balances == sorted(balances, reverse=True)
+
+
+# ===========================================================================
+# Task C3 Tests — /api/forecast, /api/supplier-plan
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Auth guard — both new endpoints must return 401 without a session
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("path", [
+    "/api/meta",
+    "/api/dashboard",
+    "/api/cashflow/monthly",
+    "/api/breakdown",
+    "/api/suppliers",
+    "/api/installments",
+    "/api/forecast",
+    "/api/supplier-plan?month=2026-05",
+])
+def test_c3_endpoints_require_auth(client, path):
+    assert client.get(path).status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Contract tests — key presence
+# ---------------------------------------------------------------------------
+
+def test_forecast_contract(client, seed_analytics, auth):
+    r = client.get("/api/forecast?scenarioId=1", cookies=auth).json()
+    assert {"forecast", "cash_paths", "fc_totals", "scenarios", "mape", "confidence"} <= set(r)
+
+
+def test_supplier_plan_contract(client, seed_analytics, auth):
+    r = client.get("/api/supplier-plan?month=2026-05", cookies=auth).json()
+    assert {"pool_m", "alloc", "leftover_m"} <= set(r)
+
+
+# ---------------------------------------------------------------------------
+# Value assertions — /api/forecast
+# ---------------------------------------------------------------------------
+
+def test_forecast_has_12_months(client, seed_analytics, auth):
+    """Forecast returns exactly 12 month entries (one FY horizon)."""
+    r = client.get("/api/forecast", cookies=auth).json()
+    assert len(r["forecast"]) == 12
+
+
+def test_forecast_month_shape(client, seed_analytics, auth):
+    """Each forecast month has year_month + base/opt/pess scenario dicts."""
+    r = client.get("/api/forecast", cookies=auth).json()
+    m = r["forecast"][0]
+    assert "year_month" in m
+    for s in ("base", "opt", "pess"):
+        assert s in m
+        assert {"in_m", "out_m", "net_m"} <= set(m[s])
+
+
+def test_forecast_opt_net_gt_base_gt_pess(client, seed_analytics, auth):
+    """opt has higher in_g/lower out_g → opt net > base net > pess net."""
+    r = client.get("/api/forecast", cookies=auth).json()
+    m = r["forecast"][0]
+    assert m["opt"]["net_m"] > m["base"]["net_m"] > m["pess"]["net_m"]
+
+
+def test_forecast_cash_paths_12_points(client, seed_analytics, auth):
+    """Each scenario cash_path list has exactly 12 points."""
+    r = client.get("/api/forecast", cookies=auth).json()
+    cp = r["cash_paths"]
+    for s in ("base", "opt", "pess"):
+        assert s in cp
+        assert len(cp[s]) == 12
+
+
+def test_forecast_mape_value(client, seed_analytics, auth):
+    """mape == 18.0 (set on cash_in series in seed_analytics)."""
+    r = client.get("/api/forecast", cookies=auth).json()
+    assert r["mape"] == pytest.approx(18.0, abs=0.01)
+
+
+def test_forecast_confidence_high(client, seed_analytics, auth):
+    """mape=18.0 → confidence 'عالية' (threshold < 25)."""
+    r = client.get("/api/forecast", cookies=auth).json()
+    assert r["confidence"] == "عالية"
+
+
+def test_forecast_scenarios_metadata(client, seed_analytics, auth):
+    """scenarios object contains the 3 standard scenario keys."""
+    r = client.get("/api/forecast", cookies=auth).json()
+    sc = r["scenarios"]
+    assert {"base", "opt", "pess"} <= set(sc)
+    assert sc["base"]["label"] == "متحفّظ"
+    assert sc["opt"]["label"] == "متفائل"
+    assert sc["pess"]["label"] == "متشائم"
+
+
+def test_forecast_fc_totals_shape(client, seed_analytics, auth):
+    """fc_totals has per-scenario dicts with in_m, out_m, net_m, end_cash_m, min_cash_m."""
+    r = client.get("/api/forecast", cookies=auth).json()
+    ft = r["fc_totals"]
+    for s in ("base", "opt", "pess"):
+        assert s in ft
+        assert {"in_m", "out_m", "net_m", "end_cash_m", "min_cash_m"} <= set(ft[s])
+
+
+def test_forecast_fc_totals_values_consistent(client, seed_analytics, auth):
+    """net_m == in_m - out_m for each scenario total."""
+    r = client.get("/api/forecast", cookies=auth).json()
+    ft = r["fc_totals"]
+    for s in ("base", "opt", "pess"):
+        assert ft[s]["net_m"] == pytest.approx(ft[s]["in_m"] - ft[s]["out_m"], rel=1e-4)
+
+
+def test_forecast_graceful_missing_scenarioid(client, seed_analytics, auth):
+    """Non-existent scenarioId doesn't crash — falls back to global assumptions."""
+    r = client.get("/api/forecast?scenarioId=9999", cookies=auth)
+    assert r.status_code == 200
+    assert "forecast" in r.json()
+
+
+def test_forecast_ordered_by_year_month(client, seed_analytics, auth):
+    """Forecast months are returned in ascending year_month order."""
+    r = client.get("/api/forecast", cookies=auth).json()
+    yms = [m["year_month"] for m in r["forecast"]]
+    assert yms == sorted(yms)
+    assert yms[0] == "2026-05"
+
+
+# ---------------------------------------------------------------------------
+# Value assertions — /api/supplier-plan
+# ---------------------------------------------------------------------------
+
+def test_supplier_plan_excludes_dollar_suppliers(client, seed_analytics, auth):
+    """Option-1: USD suppliers get allocated_m == 0."""
+    r = client.get("/api/supplier-plan?month=2026-05", cookies=auth).json()
+    assert {"pool_m", "alloc", "leftover_m"} <= set(r)
+    dollar = [a for a in r["alloc"] if a["currency"] == "USD"]
+    assert all(a["allocated_m"] == 0 for a in dollar)
+
+
+def test_supplier_plan_pool_positive(client, seed_analytics, auth):
+    """With seeded forecast values, pool_m > 0."""
+    r = client.get("/api/supplier-plan?month=2026-05", cookies=auth).json()
+    assert r["pool_m"] > 0
+
+
+def test_supplier_plan_dinar_supplier_gets_allocation(client, seed_analytics, auth):
+    """At least one IQD supplier gets allocated_m > 0."""
+    r = client.get("/api/supplier-plan?month=2026-05", cookies=auth).json()
+    dinar = [a for a in r["alloc"] if a["currency"] != "USD"]
+    assert any(a["allocated_m"] > 0 for a in dinar)
+
+
+def test_supplier_plan_leftover_non_negative(client, seed_analytics, auth):
+    """leftover_m >= 0 always."""
+    r = client.get("/api/supplier-plan?month=2026-05", cookies=auth).json()
+    assert r["leftover_m"] >= 0
+
+
+def test_supplier_plan_alloc_shape(client, seed_analytics, auth):
+    """Each alloc entry has id, name, currency, allocated_m."""
+    r = client.get("/api/supplier-plan?month=2026-05", cookies=auth).json()
+    for a in r["alloc"]:
+        assert {"id", "name", "currency", "allocated_m"} <= set(a)
+
+
+def test_supplier_plan_month_in_response(client, seed_analytics, auth):
+    """Response includes the requested month."""
+    r = client.get("/api/supplier-plan?month=2026-05", cookies=auth).json()
+    assert r["month"] == "2026-05"
+
+
+def test_supplier_plan_missing_month_422(client, auth):
+    """Missing ?month= param returns 422 (query param required)."""
+    r = client.get("/api/supplier-plan", cookies=auth)
+    assert r.status_code == 422

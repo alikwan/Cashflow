@@ -116,6 +116,12 @@ def create_app() -> FastAPI:
     application.include_router(suppliers_router)
     application.include_router(installments_router)
 
+    # Read routers — C3: forecast + supplier-plan
+    from app.api.routers.forecast import router as forecast_router
+    from app.api.routers.supplier_plan import router as supplier_plan_router
+    application.include_router(forecast_router)
+    application.include_router(supplier_plan_router)
+
     return application
 
 
