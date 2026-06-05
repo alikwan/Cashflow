@@ -14,7 +14,7 @@ Reuse guide for later tasks:
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict
@@ -265,6 +265,92 @@ class ForecastResponse(BaseModel):
     scenarios: dict[str, ScenarioMeta]   # base/opt/pess → metadata
     mape: Optional[float]
     confidence: Optional[str]
+
+
+# ---------------------------------------------------------------------------
+# D1: Write endpoint schemas
+# ---------------------------------------------------------------------------
+
+# --- Supplier caps ---
+
+class CapCreate(BaseModel):
+    """Body for POST /api/suppliers/{account_id}/caps."""
+    monthly_cap_m: float
+    effective_from: date
+    plan_low_m: float = 0.0
+    plan_high_m: float = 0.0
+    user_monthly_m: float = 0.0
+
+
+class CapOut(BaseModel):
+    """Response for a created SupplierCap row."""
+    id: int
+    supplier_id: int
+    monthly_cap_m: float
+    plan_low_m: float
+    plan_high_m: float
+    user_monthly_m: float
+    effective_from: date
+    created_by: Optional[int]
+
+
+# --- Scenarios ---
+
+class ScenarioCreate(BaseModel):
+    """Body for POST /api/scenarios."""
+    name: str
+    kind: Optional[str] = None
+    is_baseline: bool = False
+    description: Optional[str] = None
+
+
+class ScenarioUpdate(BaseModel):
+    """Body for PUT /api/scenarios/{id} — all fields optional."""
+    name: Optional[str] = None
+    kind: Optional[str] = None
+    is_baseline: Optional[bool] = None
+    description: Optional[str] = None
+
+
+class ScenarioOut(BaseModel):
+    """Response shape for a Scenario row."""
+    id: int
+    name: str
+    kind: Optional[str]
+    is_baseline: bool
+    description: Optional[str]
+
+
+# --- Assumptions ---
+
+class AssumptionUpdate(BaseModel):
+    """Body for PUT /api/scenarios/{id}/assumptions — all fields optional."""
+    usd_rate: Optional[float] = None
+    unexpected_reserve_m: Optional[float] = None
+    income_growth_pct: Optional[float] = None
+    in_growth_factor: Optional[float] = None
+    out_growth_factor: Optional[float] = None
+    cagr_floor: Optional[float] = None
+    cagr_cap: Optional[float] = None
+    forecast_horizon: Optional[int] = None
+    fiscal_year_start_month: Optional[int] = None
+    forecast_engine: Optional[str] = None
+
+
+class AssumptionOut(BaseModel):
+    """Response shape for an Assumption row."""
+    id: int
+    scenario_id: Optional[int]
+    usd_rate: Optional[float]
+    unexpected_reserve_m: Optional[float]
+    income_growth_pct: Optional[float]
+    in_growth_factor: Optional[float]
+    out_growth_factor: Optional[float]
+    cagr_floor: Optional[float]
+    cagr_cap: Optional[float]
+    forecast_horizon: Optional[int]
+    fiscal_year_start_month: Optional[int]
+    forecast_engine: Optional[str]
 
 
 # ---------------------------------------------------------------------------

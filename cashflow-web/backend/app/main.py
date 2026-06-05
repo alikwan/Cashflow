@@ -122,6 +122,10 @@ def create_app() -> FastAPI:
     application.include_router(forecast_router)
     application.include_router(supplier_plan_router)
 
+    # Write routers — D1: scenarios CRUD + assumptions upsert
+    from app.api.routers.scenarios import router as scenarios_router
+    application.include_router(scenarios_router)
+
     return application
 
 

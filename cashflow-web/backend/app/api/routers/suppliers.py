@@ -28,14 +28,17 @@ from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Depends
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.audit import _to_dict, record_audit
 from app.api.deps import get_current_user, get_session
+from app.api.errors import ApiError
 from app.api.routers._utils import latest_snapshot_date, load_active_caps
-from app.api.schemas import SupplierOut, SuppliersResponse
-from app.db.models import BalancesSnapshot, PerSupplierMonthly, Supplier
+from app.api.schemas import CapCreate, CapOut, SupplierOut, SuppliersResponse
+from app.db.models import BalancesSnapshot, PerSupplierMonthly, Supplier, SupplierCap
 
-router = APIRouter(prefix="/api", tags=["read"])
+router = APIRouter(prefix="/api", tags=["suppliers"])
 
 
 @router.get("/suppliers", response_model=SuppliersResponse)
@@ -136,3 +139,72 @@ def get_suppliers(
         ))
 
     return SuppliersResponse(suppliers=result)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/suppliers/{account_id}/caps — historized cap write
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/suppliers/{account_id}/caps",
+    response_model=CapOut,
+    status_code=201,
+    tags=["write"],
+)
+def create_supplier_cap(
+    account_id: int,
+    body: CapCreate,
+    db: Session = Depends(get_session),
+    user=Depends(get_current_user),
+) -> CapOut:
+    """
+    Append a new historized SupplierCap row for the supplier identified by account_id.
+
+    - 404 if no Supplier with that account_id.
+    - 409 if a cap for (supplier_id, effective_from) already exists.
+    - Audit log written in the same transaction.
+    """
+    # Resolve supplier by account_id
+    supplier: Supplier | None = (
+        db.query(Supplier).filter(Supplier.account_id == account_id).first()
+    )
+    if supplier is None:
+        raise ApiError("not_found", f"مورّد بالمعرّف {account_id} غير موجود", 404)
+
+    cap = SupplierCap(
+        supplier_id=supplier.id,
+        monthly_cap_m=body.monthly_cap_m,
+        plan_low_m=body.plan_low_m,
+        plan_high_m=body.plan_high_m,
+        user_monthly_m=body.user_monthly_m,
+        effective_from=body.effective_from,
+        created_by=user.id,
+    )
+
+    try:
+        db.add(cap)
+        db.flush()  # get cap.id before audit — may raise IntegrityError here
+
+        record_audit(
+            db, user,
+            action="create_cap",
+            entity="supplier_cap",
+            entity_id=cap.id,
+            before=None,
+            after=_to_dict(cap),
+        )
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise ApiError("conflict", "سقف لنفس التاريخ موجود مسبقاً", 409)
+
+    return CapOut(
+        id=cap.id,
+        supplier_id=cap.supplier_id,
+        monthly_cap_m=float(cap.monthly_cap_m),
+        plan_low_m=float(cap.plan_low_m),
+        plan_high_m=float(cap.plan_high_m),
+        user_monthly_m=float(cap.user_monthly_m),
+        effective_from=cap.effective_from,
+        created_by=cap.created_by,
+    )

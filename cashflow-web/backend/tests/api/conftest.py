@@ -16,7 +16,7 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
@@ -25,8 +25,20 @@ import app.db.models  # noqa: F401 — register all tables on Base.metadata
 
 @pytest.fixture
 def _testing_session(tmp_path):
-    """Fresh SQLite engine + sessionmaker; shared by client/seed_user/auth."""
+    """Fresh SQLite engine + sessionmaker; shared by client/seed_user/auth.
+
+    SQLite leaves foreign-key enforcement OFF by default; we turn it ON per
+    connection so the test DB rejects FK violations the way Postgres does
+    (e.g. deleting a scenario that still has dependent rows → IntegrityError).
+    """
     eng = create_engine(f"sqlite:///{tmp_path / 't.db'}", future=True)
+
+    @event.listens_for(eng, "connect")
+    def _enable_sqlite_fk(dbapi_conn, _conn_record):
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA foreign_keys=ON")
+        cur.close()
+
     Base.metadata.create_all(eng)
     return sessionmaker(bind=eng, autoflush=False, future=True)
 
