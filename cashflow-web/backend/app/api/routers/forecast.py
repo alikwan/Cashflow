@@ -68,8 +68,8 @@ def get_forecast(
     reserve_m: float = float(global_assump.unexpected_reserve_m) if (
         global_assump and global_assump.unexpected_reserve_m is not None
     ) else 15.0
-    # Global income-growth multiplier g (applied on top of each scenario's in_g)
-    g: float = float(global_assump.income_growth_pct) if (
+    # Global income-growth multiplier (applied on top of each scenario's in_g)
+    income_growth_factor: float = float(global_assump.income_growth_pct) if (
         global_assump and global_assump.income_growth_pct is not None
     ) else 1.0
 
@@ -86,7 +86,7 @@ def get_forecast(
                 .first()
             )
             if sc_assump is not None and sc_assump.income_growth_pct is not None:
-                g = float(sc_assump.income_growth_pct)
+                income_growth_factor = float(sc_assump.income_growth_pct)
 
     # ------------------------------------------------------------------
     # 2. Latest cash balance (current_cash) from monthly_cashflow
@@ -137,7 +137,7 @@ def get_forecast(
 
         scen_vals: dict[str, ScenarioValues] = {}
         for sc_key, sc in SCENARIOS.items():
-            in_m = base_in * sc["in_g"] * g
+            in_m = base_in * sc["in_g"] * income_growth_factor
             out_m = base_out * sc["out_g"]
             net_m = in_m - out_m
             scen_vals[sc_key] = ScenarioValues(in_m=in_m, out_m=out_m, net_m=net_m)

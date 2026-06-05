@@ -31,9 +31,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_session
-from app.api.routers._utils import latest_snapshot_date
+from app.api.routers._utils import latest_snapshot_date, load_active_caps
 from app.api.schemas import SupplierOut, SuppliersResponse
-from app.db.models import BalancesSnapshot, PerSupplierMonthly, Supplier, SupplierCap
+from app.db.models import BalancesSnapshot, PerSupplierMonthly, Supplier
 
 router = APIRouter(prefix="/api", tags=["read"])
 
@@ -60,23 +60,9 @@ def get_suppliers(
     account_ids  = [s.account_id for s in supplier_rows]
 
     # ------------------------------------------------------------------
-    # 2. Active cap per supplier: greatest effective_from <= today
+    # 2. Active cap per supplier: greatest effective_from <= today (bulk)
     # ------------------------------------------------------------------
-    # Load all caps for these suppliers at once, then pick the active one
-    # per supplier in Python (avoids a correlated subquery per row).
-    all_caps: list[SupplierCap] = (
-        db.query(SupplierCap)
-        .filter(
-            SupplierCap.supplier_id.in_(supplier_ids),
-            SupplierCap.effective_from <= today,
-        )
-        .order_by(SupplierCap.effective_from.asc())
-        .all()
-    )
-    # Keep only the latest effective cap per supplier_id.
-    active_cap: dict[int, float] = {}  # supplier_id → monthly_cap_m
-    for cap in all_caps:
-        active_cap[cap.supplier_id] = float(cap.monthly_cap_m)
+    active_cap: dict[int, float] = load_active_caps(db, supplier_ids, today)
 
     # ------------------------------------------------------------------
     # 3. Last-12 per_supplier_monthly rows per supplier

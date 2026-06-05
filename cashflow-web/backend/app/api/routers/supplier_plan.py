@@ -18,18 +18,19 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_session
+from app.api.routers._utils import load_active_caps
 from app.api.schemas import AllocEntry, SupplierPlanResponse
 from app.db.models import (
     Assumption,
     ForecastBase,
     PerSupplierMonthly,
     Supplier,
-    SupplierCap,
 )
 from app.domain.allocation import allocate_dinar, compute_pool
 
@@ -38,7 +39,13 @@ router = APIRouter(prefix="/api/supplier-plan", tags=["read"])
 
 @router.get("", response_model=SupplierPlanResponse)
 def get_supplier_plan(
-    month: str = Query(..., description="Forecast month in YYYY-MM format"),
+    month: Annotated[
+        str,
+        Query(
+            description="Forecast month in YYYY-MM format",
+            pattern=r"^\d{4}-(0[1-9]|1[0-2])$",
+        ),
+    ],
     scenarioId: int | None = Query(default=None),  # noqa: N803 — matches spec param name
     db: Session = Depends(get_session),
     _user=Depends(get_current_user),
@@ -97,8 +104,19 @@ def get_supplier_plan(
         .all()
     )
 
-    # Historical paid_m totals per supplier account_id over all per_supplier_monthly rows
-    all_psm: list[PerSupplierMonthly] = db.query(PerSupplierMonthly).all()
+    supplier_ids  = [sup.id         for sup in suppliers]
+    account_ids   = [sup.account_id for sup in suppliers]
+
+    # Active cap per supplier — one bulk query (avoids N+1 per-supplier queries).
+    active_cap: dict[int, float] = load_active_caps(db, supplier_ids, today)
+
+    # Historical paid_m totals per supplier account_id — filtered to active suppliers.
+    # Reused below for per-month actuals (step 6).
+    all_psm: list[PerSupplierMonthly] = (
+        db.query(PerSupplierMonthly)
+        .filter(PerSupplierMonthly.supplier_account_id.in_(account_ids))
+        .all()
+    )
     paid_totals: dict[int, float] = {}
     for row in all_psm:
         paid_totals[row.supplier_account_id] = (
@@ -115,20 +133,13 @@ def get_supplier_plan(
 
     # Build supplier dict list expected by allocate_dinar:
     # {id, name, currency, cap, share}
-    # USD suppliers have share=0 (allocate_dinar zeroes them anyway)
+    # USD suppliers have share=0 (allocate_dinar zeroes them anyway).
+    # A dinar supplier with zero payment history gets share=0 (excluded from pool
+    # until it accumulates history); the equal-fallback only applies when ALL dinar
+    # suppliers have zero history.
     supplier_list: list[dict] = []
     for sup in suppliers:
-        # Active cap: greatest effective_from <= today
-        cap_row: SupplierCap | None = (
-            db.query(SupplierCap)
-            .filter(
-                SupplierCap.supplier_id == sup.id,
-                SupplierCap.effective_from <= today,
-            )
-            .order_by(SupplierCap.effective_from.desc())
-            .first()
-        )
-        cap: float = float(cap_row.monthly_cap_m) if cap_row else 0.0
+        cap: float = active_cap.get(sup.id, 0.0)
 
         if sup.currency == "USD":
             share = 0.0
@@ -153,6 +164,7 @@ def get_supplier_plan(
 
     # ------------------------------------------------------------------
     # 6. Attach actual_paid_m for the requested month (optional, for UI)
+    #    Reuses the filtered per_supplier_monthly rows loaded in step 4.
     # ------------------------------------------------------------------
     actual_by_aid: dict[int, float] = {}
     for row in all_psm:

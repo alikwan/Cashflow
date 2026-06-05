@@ -711,3 +711,9 @@ def test_supplier_plan_missing_month_422(client, auth):
     """Missing ?month= param returns 422 (query param required)."""
     r = client.get("/api/supplier-plan", cookies=auth)
     assert r.status_code == 422
+
+
+def test_supplier_plan_malformed_month_422(client, auth):
+    """Malformed month (2026-13, month 13) returns 422 due to regex validation."""
+    r = client.get("/api/supplier-plan?month=2026-13", cookies=auth)
+    assert r.status_code == 422
