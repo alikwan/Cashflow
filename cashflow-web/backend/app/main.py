@@ -52,9 +52,42 @@ def create_app() -> FastAPI:
         except Exception:
             logger.exception("Owner seeding failed (non-fatal — DB may be unreachable).")
 
+        # Startup — build and start the nightly ETL scheduler
+        # Set the attribute unconditionally first so any future code can always
+        # do `if app.state.scheduler is not None` without risking AttributeError
+        # (e.g. when start() below fails and the attribute would otherwise be unset).
+        app.state.scheduler = None
+        scheduler = None
+        try:
+            from app.etl.scheduler import build_scheduler
+            from app.api.routers.etl import run_etl_job
+
+            scheduler = build_scheduler(
+                run_at=settings.etl_daily_at,
+                tz=settings.app_tz,
+                job=run_etl_job,
+            )
+            scheduler.start()
+            app.state.scheduler = scheduler
+            logger.info(
+                "Nightly ETL scheduler started (daily at %s %s).",
+                settings.etl_daily_at,
+                settings.app_tz,
+            )
+        except Exception:
+            logger.exception(
+                "Nightly ETL scheduler failed to start (non-fatal — continuing)."
+            )
+
         yield  # Application runs here
 
-        # Shutdown (nothing to do currently)
+        # Shutdown — stop the scheduler gracefully
+        if scheduler is not None:
+            try:
+                scheduler.shutdown(wait=False)
+                logger.info("ETL scheduler shut down.")
+            except Exception:
+                logger.exception("ETL scheduler shutdown error (ignored).")
 
     application = FastAPI(
         title="Cashflow Web API — معرض البيت السعيد",
@@ -139,6 +172,10 @@ def create_app() -> FastAPI:
     # Export routers — E1: xlsx + pdf
     from app.api.export import router as export_router
     application.include_router(export_router)
+
+    # ETL control — F1: manual trigger + status
+    from app.api.routers.etl import router as etl_router
+    application.include_router(etl_router)
 
     return application
 
