@@ -40,6 +40,7 @@ from app.db.models import (
     PaymentPlanLine,
     PerSupplierMonthly,
     Scenario,
+    Supplier,
 )
 
 router = APIRouter(prefix="/api/payment-plans", tags=["payment-plans"])
@@ -284,7 +285,6 @@ def reconcile_payment_plan(
     )
 
     # Build map: supplier_id (PK) → account_id from Supplier table
-    from app.db.models import Supplier
     supplier_ids = [ln.supplier_id for ln in lines]
     suppliers_orm = (
         db.query(Supplier)

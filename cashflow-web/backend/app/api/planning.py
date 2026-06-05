@@ -44,6 +44,10 @@ def compute_month_allocation(
       alloc       list[dict]  — {id(account_id), supplier_id(pk), name, currency, allocated_m}
       leftover_m  float
       suppliers   list[dict]  — intermediate supplier dicts (for debugging / plan lines)
+      _all_psm    list[PerSupplierMonthly]  — internal: ALL per_supplier_monthly rows for
+                    suppliers in this call (not filtered to year_month); consumed by
+                    supplier_plan.py to avoid a second DB query when building actual_paid_m.
+                    Callers outside the router layer should not rely on this key.
 
     The `id` field in alloc entries is account_id (mirrors the existing supplier-plan contract).
     The `supplier_id` field is the suppliers.id PK (needed by payment_plan_lines FK).

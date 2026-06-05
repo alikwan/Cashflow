@@ -15,7 +15,7 @@ Reuse guide for later tasks:
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -394,7 +394,7 @@ class PaymentPlanCreate(BaseModel):
 
 class PaymentPlanStatusUpdate(BaseModel):
     """Body for PUT /api/payment-plans/{id}."""
-    status: str
+    status: Literal["draft", "approved"]
 
 
 class PaymentPlanLineOut(BaseModel):
@@ -483,11 +483,19 @@ class AlertsListOut(BaseModel):
 # ---------------------------------------------------------------------------
 
 class DisplaySettings(BaseModel):
-    """Display preferences from AppSettings row."""
+    """Display preferences from AppSettings row (GET response — concrete values with defaults)."""
     accent: str = "أزرق"
     show_alert: bool = True
     neg_threshold_m: float = 0
     over_cap_warn: bool = True
+
+
+class DisplaySettingsUpdate(BaseModel):
+    """PUT-body display sub-model — all fields Optional so callers can do field-level partial updates."""
+    accent: Optional[str] = None
+    show_alert: Optional[bool] = None
+    neg_threshold_m: Optional[float] = None
+    over_cap_warn: Optional[bool] = None
 
 
 class AssumptionFields(BaseModel):
@@ -511,6 +519,11 @@ class SettingsOut(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
-    """Body for PUT /api/settings — all sub-fields optional."""
-    display: Optional[DisplaySettings] = None
+    """Body for PUT /api/settings — all sub-fields optional.
+
+    `display` uses DisplaySettingsUpdate (all fields Optional) so callers can do
+    field-level partial updates without resetting other display fields to defaults.
+    `assumptions` already uses all-Optional AssumptionFields.
+    """
+    display: Optional[DisplaySettingsUpdate] = None
     assumptions: Optional[AssumptionFields] = None

@@ -114,11 +114,12 @@ def put_settings(
 
     if body.display is not None:
         d = body.display
-        if d.accent is not None:
-            app_row.accent = d.accent
-        app_row.show_alert = d.show_alert
-        app_row.neg_threshold_m = Decimal(str(d.neg_threshold_m))
-        app_row.over_cap_warn = d.over_cap_warn
+        update_display = d.model_dump(exclude_none=True)
+        for field, value in update_display.items():
+            if field == "neg_threshold_m":
+                app_row.neg_threshold_m = Decimal(str(value))
+            else:
+                setattr(app_row, field, value)
     app_row.updated_at = datetime.now(timezone.utc)
 
     # --- Global Assumption upsert ---

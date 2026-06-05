@@ -528,6 +528,17 @@ class TestPaymentPlans:
         rows = _audit_rows(_testing_session, "create_payment_plan")
         assert len(rows) == 1
 
+    def test_update_payment_plan_invalid_status_422(self, client, seed_analytics, auth):
+        """PUT /api/payment-plans/{id} with an invalid status value → 422."""
+        client.post("/api/scenarios", json={"name": "base", "kind": "base"}, cookies=auth)
+        pid = client.post(
+            "/api/payment-plans",
+            json={"year_month": "2026-05", "scenario_id": 1},
+            cookies=auth,
+        ).json()["id"]
+        r = client.put(f"/api/payment-plans/{pid}", json={"status": "banana"}, cookies=auth)
+        assert r.status_code == 422
+
 
 # ===========================================================================
 # D2: Notes
@@ -750,3 +761,35 @@ class TestSettings:
         """GET/PUT /api/settings without session → 401."""
         assert client.get("/api/settings").status_code == 401
         assert client.put("/api/settings", json={}).status_code == 401
+
+    def test_put_settings_display_partial_preserves_others(self, client, auth):
+        """Partial display PUT only updates the provided field; omitted fields are preserved."""
+        # Step 1: PUT full display settings (sets all four fields to non-default values)
+        r1 = client.put(
+            "/api/settings",
+            json={"display": {
+                "accent": "أزرق",
+                "show_alert": False,
+                "over_cap_warn": False,
+                "neg_threshold_m": -5.0,
+            }},
+            cookies=auth,
+        )
+        assert r1.status_code == 200, r1.text
+
+        # Step 2: Partial PUT — only change accent; omit the other three fields
+        r2 = client.put(
+            "/api/settings",
+            json={"display": {"accent": "أخضر"}},
+            cookies=auth,
+        )
+        assert r2.status_code == 200, r2.text
+
+        # Step 3: GET and verify accent changed but other fields were NOT reset to defaults
+        r3 = client.get("/api/settings", cookies=auth)
+        assert r3.status_code == 200
+        d = r3.json()["display"]
+        assert d["accent"] == "أخضر"          # updated
+        assert d["show_alert"] is False         # preserved (not reset to default True)
+        assert d["over_cap_warn"] is False      # preserved (not reset to default True)
+        assert d["neg_threshold_m"] == -5.0     # preserved (not reset to default 0)
