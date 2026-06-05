@@ -136,6 +136,10 @@ def create_app() -> FastAPI:
     application.include_router(alerts_router)
     application.include_router(settings_router)
 
+    # Export routers — E1: xlsx + pdf
+    from app.api.export import router as export_router
+    application.include_router(export_router)
+
     return application
 
 
