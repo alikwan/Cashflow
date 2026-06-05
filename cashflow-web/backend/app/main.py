@@ -106,6 +106,16 @@ def create_app() -> FastAPI:
     application.include_router(meta_router)
     application.include_router(dashboard_router)
 
+    # Read routers — C2: cashflow/monthly, breakdown, suppliers, installments
+    from app.api.routers.cashflow import router as cashflow_router
+    from app.api.routers.breakdown import router as breakdown_router
+    from app.api.routers.suppliers import router as suppliers_router
+    from app.api.routers.installments import router as installments_router
+    application.include_router(cashflow_router)
+    application.include_router(breakdown_router)
+    application.include_router(suppliers_router)
+    application.include_router(installments_router)
+
     return application
 
 

@@ -111,3 +111,113 @@ class DashboardResponse(BaseModel):
     alerts: list[AlertOut]
     monthly_series: list[MonthlyPoint]
     expense_mix: ExpenseMix
+
+
+# ---------------------------------------------------------------------------
+# /api/cashflow/monthly  (C2)
+# ---------------------------------------------------------------------------
+
+class CashflowMonthPoint(BaseModel):
+    """One month in the cashflow series — perspective-aware out/net."""
+    year_month: str
+    cash_in_m: float
+    out_total_m: float
+    net_total_m: float
+    cash_running_m: float
+    fiscal_year: str
+
+
+class ForecastPoint(BaseModel):
+    """One forecast month — perspective-aware out/net."""
+    year_month: str
+    cash_in_m: float
+    out_total_m: float
+    net_total_m: float
+
+
+class CashflowByFiscalYear(BaseModel):
+    """Aggregated totals per fiscal year."""
+    fiscal_year: str
+    in_m: float
+    out_m: float
+    net_m: float
+
+
+class CashflowMonthlyResponse(BaseModel):
+    """Response for GET /api/cashflow/monthly."""
+    months: list[CashflowMonthPoint]
+    forecast: list[ForecastPoint]
+    by_fiscal_year: list[CashflowByFiscalYear]
+
+
+# ---------------------------------------------------------------------------
+# /api/breakdown  (C2)
+# ---------------------------------------------------------------------------
+
+class ExpenseCatMonthly(BaseModel):
+    """One month entry in an expense category's monthly series."""
+    year_month: str
+    amount_m: float
+
+
+class ExpenseCatOut(BaseModel):
+    """One expense category with totals + monthly series."""
+    key: str
+    column: str
+    total_m: float
+    monthly: list[ExpenseCatMonthly]
+
+
+class BalanceEntryOut(BaseModel):
+    """One account's balance (partner, fund, or debtor)."""
+    account_id: int
+    name: str
+    balance_m: float
+
+
+class BreakdownResponse(BaseModel):
+    """Response for GET /api/breakdown."""
+    expense_cats: list[ExpenseCatOut]
+    partners: list[BalanceEntryOut]
+    funds: list[BalanceEntryOut]
+
+
+# ---------------------------------------------------------------------------
+# /api/suppliers  (C2)
+# ---------------------------------------------------------------------------
+
+class SupplierOut(BaseModel):
+    """One supplier entry."""
+    id: int          # account_id (mirrors data.js)
+    name: str
+    cap: float
+    currency: str
+    monthly: list[float]
+    over_cap: int
+    balance_m: float
+    util: Optional[float]
+    active: bool
+
+
+class SuppliersResponse(BaseModel):
+    """Response for GET /api/suppliers."""
+    suppliers: list[SupplierOut]
+
+
+# ---------------------------------------------------------------------------
+# /api/installments  (C2)
+# ---------------------------------------------------------------------------
+
+class AgingBucketOut(BaseModel):
+    """One aging bucket."""
+    bucket_key: str
+    label: str
+    amount_m: float
+    count: int
+
+
+class InstallmentsResponse(BaseModel):
+    """Response for GET /api/installments."""
+    summary: Optional[InstallmentsSummaryOut]
+    aging: list[AgingBucketOut]
+    top_debtors: list[BalanceEntryOut]

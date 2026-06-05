@@ -111,8 +111,10 @@ def seed_analytics(_testing_session):
     """
     from app.db.models import (
         Assumption, EtlRun, InstallmentsSummary, MonthlyCashflow,
+        BalancesSnapshot, InstallmentsAging, PerSupplierMonthly,
     )
     from app.domain.forecast import fiscal_year_label
+    from app.seed import seed_suppliers, seed_supplier_caps
 
     s = _testing_session()
     try:
@@ -200,6 +202,118 @@ def seed_analytics(_testing_session):
             usd_rate_used=Decimal("1350"),
             reconciliation_residual_m=Decimal("0"),
             source_tz="Asia/Baghdad",
+        ))
+
+        # --- Seed suppliers + caps (C2) ------------------------------------
+        seed_suppliers(s)
+        seed_supplier_caps(s)
+
+        # --- PerSupplierMonthly rows (C2) ----------------------------------
+        # Use the last 12 of the 24 seeded months (2023-05 → 2024-04)
+        supplier_months = ordered[12:]  # last 12 months
+
+        # supplier 1001: paid_m=5 every month (at cap=5 — no over_cap)
+        for ym in supplier_months:
+            s.add(PerSupplierMonthly(
+                supplier_account_id=1001,
+                year_month=ym,
+                paid_m=Decimal("5"),
+                paid_iqd_m=Decimal("5"),
+                paid_usd_m=Decimal("0"),
+                recv_m=Decimal("0"),
+            ))
+
+        # supplier 2432: paid_m=18 in first month (over cap=15), 10 otherwise
+        for i, ym in enumerate(supplier_months):
+            paid = Decimal("18") if i == 0 else Decimal("10")
+            s.add(PerSupplierMonthly(
+                supplier_account_id=2432,
+                year_month=ym,
+                paid_m=paid,
+                paid_iqd_m=paid,
+                paid_usd_m=Decimal("0"),
+                recv_m=Decimal("0"),
+            ))
+
+        # supplier 4937 (USD, cap=40): paid_m=35 every month
+        for ym in supplier_months:
+            s.add(PerSupplierMonthly(
+                supplier_account_id=4937,
+                year_month=ym,
+                paid_m=Decimal("35"),
+                paid_iqd_m=Decimal("0"),
+                paid_usd_m=Decimal("35"),
+                recv_m=Decimal("0"),
+            ))
+
+        # --- BalancesSnapshot rows at latest snapshot_date (C2) ------------
+        snap_date = date(2024, 4, 30)
+
+        # Cashboxes
+        s.add(BalancesSnapshot(
+            snapshot_date=snap_date, account_id=181, currency_id=1,
+            account_name="صندوق المعتصم", account_kind="cashbox",
+            balance_m=Decimal("150"), balance_iqd_m=Decimal("150"),
+        ))
+        s.add(BalancesSnapshot(
+            snapshot_date=snap_date, account_id=180, currency_id=1,
+            account_name="نقد في الخزينة", account_kind="cashbox",
+            balance_m=Decimal("50"), balance_iqd_m=Decimal("50"),
+        ))
+
+        # Partners (sorted by balance desc: فؤاد > علي)
+        s.add(BalancesSnapshot(
+            snapshot_date=snap_date, account_id=2535, currency_id=1,
+            account_name="فؤاد كريم", account_kind="partner",
+            balance_m=Decimal("80"), balance_iqd_m=Decimal("80"),
+        ))
+        s.add(BalancesSnapshot(
+            snapshot_date=snap_date, account_id=2536, currency_id=1,
+            account_name="علي كوان", account_kind="partner",
+            balance_m=Decimal("60"), balance_iqd_m=Decimal("60"),
+        ))
+
+        # Debtors (top 2)
+        s.add(BalancesSnapshot(
+            snapshot_date=snap_date, account_id=9001, currency_id=1,
+            account_name="زبون أ", account_kind="debtor",
+            balance_m=Decimal("12"), balance_iqd_m=Decimal("12"),
+        ))
+        s.add(BalancesSnapshot(
+            snapshot_date=snap_date, account_id=9002, currency_id=1,
+            account_name="زبون ب", account_kind="debtor",
+            balance_m=Decimal("8"), balance_iqd_m=Decimal("8"),
+        ))
+
+        # Supplier balances for the 3 per_supplier_monthly suppliers
+        s.add(BalancesSnapshot(
+            snapshot_date=snap_date, account_id=1001, currency_id=1,
+            account_name="معرض البركة", account_kind="supplier",
+            balance_m=Decimal("3"), balance_iqd_m=Decimal("3"),
+        ))
+        s.add(BalancesSnapshot(
+            snapshot_date=snap_date, account_id=2432, currency_id=1,
+            account_name="حميد الشطباوي", account_kind="supplier",
+            balance_m=Decimal("10"), balance_iqd_m=Decimal("10"),
+        ))
+        s.add(BalancesSnapshot(
+            snapshot_date=snap_date, account_id=4937, currency_id=2,
+            account_name="شركة الحافظ", account_kind="supplier",
+            balance_m=Decimal("35"), balance_iqd_m=Decimal("47250"),
+        ))
+
+        # --- InstallmentsAging rows (C2) -----------------------------------
+        s.add(InstallmentsAging(
+            snapshot_date=snap_date, bucket_key="not_due",
+            label="غير مستحق", amount_m=Decimal("500"), count=3000,
+        ))
+        s.add(InstallmentsAging(
+            snapshot_date=snap_date, bucket_key="b0_30",
+            label="0-30 يوم", amount_m=Decimal("200"), count=1200,
+        ))
+        s.add(InstallmentsAging(
+            snapshot_date=snap_date, bucket_key="b120",
+            label="أكثر من 120 يوم", amount_m=Decimal("370"), count=800,
         ))
 
         s.commit()
