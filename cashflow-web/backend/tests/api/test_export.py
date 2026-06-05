@@ -114,3 +114,28 @@ def test_export_pdf_empty_db(client, auth):
     r = client.get("/api/export/pdf", cookies=auth)
     assert r.status_code == 200
     assert r.content[:4] == b"%PDF"
+
+
+# ---------------------------------------------------------------------------
+# PDF — no-font fallback must not crash (I3)
+# ---------------------------------------------------------------------------
+
+def test_export_pdf_without_arabic_font(client, seed_analytics, auth, monkeypatch):
+    """
+    When _ARABIC_FONT_PATH is None the PDF builder must use Latin-only Helvetica
+    fallback text and return a valid PDF — no FPDFUnicodeEncodingException.
+
+    This simulates a Docker deployment where the font file is somehow missing
+    (belt-and-suspenders: the real fix is bundling the font, but the code must
+    be crash-safe regardless).
+    """
+    import app.api.export as export_module
+
+    monkeypatch.setattr(export_module, "_ARABIC_FONT_PATH", None)
+
+    r = client.get("/api/export/pdf", cookies=auth)
+    assert r.status_code == 200, (
+        f"PDF export crashed without Arabic font (status={r.status_code}): "
+        f"{r.text[:500]}"
+    )
+    assert r.content[:4] == b"%PDF", "Response is not a valid PDF"

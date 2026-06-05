@@ -13,14 +13,14 @@ PDF library chosen: fpdf2
   but it fails to import on macOS because the native Pango/GObject system
   libraries are absent (OSError: cannot load library 'libgobject-2.0-0').
   fpdf2 renders a valid PDF with the Arabic font 'IBM Plex Sans Arabic'
-  (IBMPlexSansArabic-Regular.ttf found in ~/Library/Fonts/) combined with
+  (IBMPlexSansArabic-Regular.ttf bundled in app/api/fonts/) combined with
   arabic-reshaper + python-bidi for correct right-to-left ligature shaping.
   Full Arabic text is rendered correctly; RTL paragraph alignment is achieved
   via right-aligned cells.
 
-NOTE: The Arabic font path is resolved at import time with a fallback to
-Helvetica if the TTF is missing (production server may not have ~/Library/Fonts).
-A future task should bundle the font inside the package for portability.
+NOTE: The Arabic font is bundled at app/api/fonts/IBMPlexSansArabic-Regular.ttf
+(SIL OFL 1.1) so it always resolves in any deployment including Docker.
+System font paths are kept as additional fallbacks.
 """
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ import io
 import os
 from collections import defaultdict
 from datetime import date
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends
@@ -35,9 +36,12 @@ from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_session
+from app.api.routers._utils import latest_snapshot_date, load_active_caps
 from app.db.models import (
     Alert,
+    Assumption,
     BalancesSnapshot,
+    EtlRun,
     ForecastBase,
     InstallmentsAging,
     InstallmentsSummary,
@@ -73,7 +77,11 @@ except ImportError:
 # Arabic font path resolution
 # ---------------------------------------------------------------------------
 
+# Bundled font is the FIRST candidate — always present in repo/Docker image.
+_BUNDLED_FONT = Path(__file__).parent / "fonts" / "IBMPlexSansArabic-Regular.ttf"
+
 _FONT_CANDIDATES = [
+    str(_BUNDLED_FONT),
     os.path.expanduser("~/Library/Fonts/IBMPlexSansArabic-Regular.ttf"),
     "/usr/share/fonts/truetype/IBMPlexSansArabic-Regular.ttf",
     os.path.expanduser("~/Library/Fonts/NotoNaskhArabic-Regular.ttf"),
@@ -187,29 +195,24 @@ def build_workbook(db: Session) -> io.BytesIO:
         .all()
     )
 
-    # Latest cap per supplier_id
-    caps: dict[int, float] = {}
-    for sup in suppliers:
-        cap_row = (
-            db.query(SupplierCap)
-            .filter(SupplierCap.supplier_id == sup.id)
-            .order_by(SupplierCap.effective_from.desc())
-            .first()
-        )
-        caps[sup.id] = float(cap_row.monthly_cap_m) if cap_row else 0.0
+    # Latest cap per supplier — single bulk query (no N+1)
+    supplier_ids = [sup.id for sup in suppliers]
+    caps: dict[int, float] = load_active_caps(db, supplier_ids) if supplier_ids else {}
 
-    # Latest balance snapshot per account_id (sum over currency_ids → IQD)
-    bal_snap_date: Optional[date] = None
-    snap_q = db.query(BalancesSnapshot).order_by(BalancesSnapshot.snapshot_date.desc()).first()
-    if snap_q:
-        bal_snap_date = snap_q.snapshot_date
+    # Latest balance snapshot — supplier kind only (matches suppliers router)
+    bal_snap_date: Optional[date] = latest_snapshot_date(db, ["supplier"])
 
     balances_iqd: dict[int, float] = defaultdict(float)
     balances_raw: dict[int, float] = defaultdict(float)
     if bal_snap_date:
+        account_ids = [sup.account_id for sup in suppliers]
         snap_rows = (
             db.query(BalancesSnapshot)
-            .filter(BalancesSnapshot.snapshot_date == bal_snap_date)
+            .filter(
+                BalancesSnapshot.snapshot_date == bal_snap_date,
+                BalancesSnapshot.account_kind == "supplier",
+                BalancesSnapshot.account_id.in_(account_ids),
+            )
             .all()
         )
         for sn in snap_rows:
@@ -270,8 +273,8 @@ def build_workbook(db: Session) -> io.BytesIO:
         if isinstance(val, float):
             cell.number_format = NUM_FMT
 
-    # Aging section (skip a row, then subheader)
-    aging_start = len(summary_rows) + 3  # +2 for data rows, +1 gap
+    # Aging section: row 1 = header, rows 2..(1+N) = data, then 1 blank gap → N+3
+    aging_start = len(summary_rows) + 3  # header row + N data rows + 1 blank gap
 
     ws3.cell(aging_start, 1, "أعمار الديون").font = Font(bold=True)
     aging_start += 1
@@ -410,21 +413,42 @@ def build_summary_pdf(db: Session) -> bytes:
         .all()
     )
 
+    # USD rate: latest successful ETL run → global Assumption → hardcoded default
+    usd_rate_row = (
+        db.query(EtlRun)
+        .filter(EtlRun.status == "success", EtlRun.usd_rate_used.isnot(None))
+        .order_by(EtlRun.finished_at.desc())
+        .first()
+    )
+    if usd_rate_row and usd_rate_row.usd_rate_used:
+        usd_rate = int(usd_rate_row.usd_rate_used)
+    else:
+        assump = (
+            db.query(Assumption)
+            .filter(Assumption.scenario_id.is_(None), Assumption.usd_rate.isnot(None))
+            .order_by(Assumption.id.desc())
+            .first()
+        )
+        usd_rate = int(assump.usd_rate) if assump and assump.usd_rate else 1350
+
     # Report date
     today = date.today().isoformat()
 
     # ------------------------------------------------------------------
-    # Build PDF
+    # Build PDF — re-resolve font path each call so tests can monkeypatch
     # ------------------------------------------------------------------
+    font_path = _ARABIC_FONT_PATH
+    # (tests may monkeypatch _ARABIC_FONT_PATH to None to exercise Latin path)
+
     pdf = FPDF()
     pdf.set_auto_page_break(auto=False)
     pdf.add_page()
 
-    use_arabic = _ARABIC_FONT_PATH is not None and _ARABIC_OK
+    use_arabic = font_path is not None and _ARABIC_OK
 
     if use_arabic:
-        pdf.add_font("Arabic", "", _ARABIC_FONT_PATH)
-        pdf.add_font("Arabic", "B", _ARABIC_FONT_PATH)
+        pdf.add_font("Arabic", "", font_path)
+        pdf.add_font("Arabic", "B", font_path)
 
     def set_arabic_font(size: int, bold: bool = False) -> None:
         if use_arabic:
@@ -439,9 +463,21 @@ def build_summary_pdf(db: Session) -> bytes:
             return _ar(text)
         return text
 
+    def t(arabic: str, latin: str) -> str:
+        """Return Arabic (reshaped) when the font is available, Latin otherwise.
+
+        Belt-and-suspenders guard: NO raw Arabic string may reach Helvetica.
+        Every label and header must go through t() or row(label_fallback=...).
+        """
+        return rtext(arabic) if use_arabic else latin
+
     def row(label_ar: str, value: str, label_fallback: str = "") -> None:
-        """Render a label+value line, right-aligned."""
-        label = rtext(label_ar) if use_arabic else label_fallback or label_ar
+        """Render a label+value line, right-aligned.
+
+        label_ar is rendered as Arabic when use_arabic; label_fallback (required
+        for all static labels) is used with Helvetica so no Arabic reaches it.
+        """
+        label = rtext(label_ar) if use_arabic else (label_fallback or label_ar)
         set_arabic_font(10)
         pdf.set_x(pdf.l_margin)
         w = pdf.w - pdf.l_margin - pdf.r_margin
@@ -461,7 +497,8 @@ def build_summary_pdf(db: Session) -> bytes:
     # ------------------------------------------------------------------
     set_arabic_font(18, bold=True)
     pdf.set_text_color(37, 99, 235)
-    pdf.cell(0, 14, rtext("تقرير السيولة النقدية — معرض البيت السعيد"),
+    pdf.cell(0, 14,
+             t("تقرير السيولة النقدية — معرض البيت السعيد", "Cash Flow Summary - Al Bayt Al Saeid"),
              align="R", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_text_color(0, 0, 0)
 
@@ -473,7 +510,7 @@ def build_summary_pdf(db: Session) -> bytes:
     # Section 1: Current cash position
     # ------------------------------------------------------------------
     set_arabic_font(12, bold=True)
-    pdf.cell(0, 10, rtext("الوضع النقدي الحالي"), align="R",
+    pdf.cell(0, 10, t("الوضع النقدي الحالي", "Current Cash Position"), align="R",
              new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     divider()
 
@@ -489,13 +526,18 @@ def build_summary_pdf(db: Session) -> bytes:
             last_cf.year_month,
             label_fallback="Last analysed month",
         )
+    row(
+        "سعر صرف الدولار (د.ع/$)",
+        f"{usd_rate:,}",
+        label_fallback="USD rate (IQD)",
+    )
     pdf.ln(3)
 
     # ------------------------------------------------------------------
     # Section 2: FY totals
     # ------------------------------------------------------------------
     set_arabic_font(12, bold=True)
-    pdf.cell(0, 10, rtext("ملخّص السنوات المالية"), align="R",
+    pdf.cell(0, 10, t("ملخّص السنوات المالية", "FY Totals"), align="R",
              new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     divider()
 
@@ -503,19 +545,19 @@ def build_summary_pdf(db: Session) -> bytes:
     for fy, vals in sorted(fy_sums.items()):
         net = vals["in_m"] - vals["out_m"]
         row(
-            f"{rtext('السنة المالية')} {fy}",
+            f"FY {fy}",  # FY label is already Latin-safe
             f"IN {vals['in_m']:,.1f}  |  OUT {vals['out_m']:,.1f}  |  NET {net:,.1f}",
             label_fallback=f"FY {fy}",
         )
     if not fy_sums:
-        row("السنوات المالية", "لا توجد بيانات", label_fallback="FY totals: no data")
+        row("لا توجد بيانات", "—", label_fallback="FY totals: no data")
     pdf.ln(3)
 
     # ------------------------------------------------------------------
     # Section 3: Installments summary
     # ------------------------------------------------------------------
     set_arabic_font(12, bold=True)
-    pdf.cell(0, 10, rtext("ملخّص الأقساط"), align="R",
+    pdf.cell(0, 10, t("ملخّص الأقساط", "Installments"), align="R",
              new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     divider()
 
@@ -531,7 +573,7 @@ def build_summary_pdf(db: Session) -> bytes:
     # Section 4: Alerts + top suppliers
     # ------------------------------------------------------------------
     set_arabic_font(12, bold=True)
-    pdf.cell(0, 10, rtext("التنبيهات والموردون"), align="R",
+    pdf.cell(0, 10, t("التنبيهات والموردون", "Active alerts + Top suppliers"), align="R",
              new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     divider()
 
@@ -540,12 +582,14 @@ def build_summary_pdf(db: Session) -> bytes:
     pdf.ln(2)
 
     set_arabic_font(10, bold=True)
-    pdf.cell(0, 7, rtext("أبرز الموردين:"), align="R",
+    pdf.cell(0, 7, t("أبرز الموردين:", "Top suppliers:"), align="R",
              new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     set_arabic_font(10)
     for sup in top_suppliers:
-        name_display = rtext(sup.name) if use_arabic else sup.name
-        row(name_display, sup.currency or "IQD", label_fallback=sup.name)
+        # Latin fallback: use account_id (always ASCII) so no Arabic reaches Helvetica
+        sup_name_ar = sup.name
+        sup_latin = str(sup.account_id)
+        row(sup_name_ar, sup.currency or "IQD", label_fallback=sup_latin)
 
     # ------------------------------------------------------------------
     # Footer
@@ -554,7 +598,8 @@ def build_summary_pdf(db: Session) -> bytes:
     set_arabic_font(8)
     pdf.set_text_color(120, 120, 120)
     pdf.cell(0, 6,
-             rtext("تقرير مُولَّد تلقائياً — نظام إدارة السيولة النقدية"),
+             t("تقرير مُولَّد تلقائياً — نظام إدارة السيولة النقدية",
+               "Auto-generated report - Cash Flow Management System"),
              align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     return bytes(pdf.output())
