@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     app_secret_key: str = ""
     etl_daily_at: str = "02:00"
 
+    # بيانات المالك الأولية (للـ seeding)
+    app_owner_username: str = ""
+    app_owner_password: str = ""
+
     @property
     def postgres_url(self) -> str:
         return (
