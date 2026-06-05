@@ -100,6 +100,12 @@ def create_app() -> FastAPI:
     from app.api.auth import router as auth_router
     application.include_router(auth_router)
 
+    # Read routers — meta + dashboard
+    from app.api.routers.meta import router as meta_router
+    from app.api.routers.dashboard import router as dashboard_router
+    application.include_router(meta_router)
+    application.include_router(dashboard_router)
+
     return application
 
 
