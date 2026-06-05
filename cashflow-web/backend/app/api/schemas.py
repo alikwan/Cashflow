@@ -17,7 +17,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -275,11 +275,19 @@ class ForecastResponse(BaseModel):
 
 class CapCreate(BaseModel):
     """Body for POST /api/suppliers/{account_id}/caps."""
-    monthly_cap_m: float
+    monthly_cap_m: float = Field(ge=0)
     effective_from: date
-    plan_low_m: float = 0.0
-    plan_high_m: float = 0.0
-    user_monthly_m: float = 0.0
+    plan_low_m: float = Field(default=0.0, ge=0)
+    plan_high_m: float = Field(default=0.0, ge=0)
+    user_monthly_m: float = Field(default=0.0, ge=0)
+
+    @model_validator(mode="after")
+    def _check_plan_range(self) -> "CapCreate":
+        low = self.plan_low_m
+        high = self.plan_high_m
+        if low > 0 and high > 0 and low > high:
+            raise ValueError("plan_low_m must be ≤ plan_high_m")
+        return self
 
 
 class CapOut(BaseModel):
@@ -325,15 +333,15 @@ class ScenarioOut(BaseModel):
 
 class AssumptionUpdate(BaseModel):
     """Body for PUT /api/scenarios/{id}/assumptions — all fields optional."""
-    usd_rate: Optional[float] = None
-    unexpected_reserve_m: Optional[float] = None
+    usd_rate: Optional[float] = Field(default=None, ge=0)
+    unexpected_reserve_m: Optional[float] = Field(default=None, ge=0)
     income_growth_pct: Optional[float] = None
     in_growth_factor: Optional[float] = None
     out_growth_factor: Optional[float] = None
     cagr_floor: Optional[float] = None
     cagr_cap: Optional[float] = None
-    forecast_horizon: Optional[int] = None
-    fiscal_year_start_month: Optional[int] = None
+    forecast_horizon: Optional[int] = Field(default=None, ge=1)
+    fiscal_year_start_month: Optional[int] = Field(default=None, ge=1, le=12)
     forecast_engine: Optional[str] = None
 
 

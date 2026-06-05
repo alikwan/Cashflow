@@ -105,6 +105,29 @@ class TestSupplierCaps:
         )
         assert resp.status_code == 401
 
+    def test_create_cap_negative_cap_422(self, client, seed_suppliers, auth):
+        """monthly_cap_m=-5 → 422 (field validation)."""
+        resp = client.post(
+            "/api/suppliers/1001/caps",
+            json={"monthly_cap_m": -5, "effective_from": "2026-06-01"},
+            cookies=auth,
+        )
+        assert resp.status_code == 422
+
+    def test_create_cap_plan_range_invalid_422(self, client, seed_suppliers, auth):
+        """plan_low_m > plan_high_m (both > 0) → 422."""
+        resp = client.post(
+            "/api/suppliers/1001/caps",
+            json={
+                "monthly_cap_m": 10,
+                "effective_from": "2026-06-01",
+                "plan_low_m": 8.0,
+                "plan_high_m": 5.0,
+            },
+            cookies=auth,
+        )
+        assert resp.status_code == 422
+
 
 # ===========================================================================
 # Scenario CRUD tests
@@ -237,6 +260,33 @@ class TestScenarios:
         ids = [x["id"] for x in client.get("/api/scenarios", cookies=auth).json()]
         assert sid in ids
 
+    def test_update_to_baseline_conflict(self, client, auth):
+        """PUT is_baseline=True when another scenario is already baseline → 409 conflict."""
+        # Create scenario A as baseline
+        r_a = client.post(
+            "/api/scenarios",
+            json={"name": "الأساسي", "is_baseline": True},
+            cookies=auth,
+        )
+        assert r_a.status_code == 201
+        # Create scenario B as non-baseline
+        r_b = client.post(
+            "/api/scenarios",
+            json={"name": "بديل", "is_baseline": False},
+            cookies=auth,
+        )
+        assert r_b.status_code == 201
+        sid_b = r_b.json()["id"]
+
+        # Try to make B also a baseline → conflict
+        put_r = client.put(
+            f"/api/scenarios/{sid_b}",
+            json={"is_baseline": True},
+            cookies=auth,
+        )
+        assert put_r.status_code == 409
+        assert put_r.json()["error"]["code"] == "conflict"
+
     def test_scenarios_require_auth(self, client):
         """GET/POST without session → 401."""
         assert client.get("/api/scenarios").status_code == 401
@@ -304,3 +354,20 @@ class TestAssumptions:
         """No cookie → 401."""
         r = client.put("/api/scenarios/1/assumptions", json={"usd_rate": 1300.0})
         assert r.status_code == 401
+
+    def test_put_assumptions_invalid_month_422(self, client, auth):
+        """fiscal_year_start_month=13 → 422 (field validation)."""
+        r = client.post(
+            "/api/scenarios",
+            json={"name": "تحقق الافتراضات", "is_baseline": False},
+            cookies=auth,
+        )
+        assert r.status_code == 201
+        sid = r.json()["id"]
+
+        put_r = client.put(
+            f"/api/scenarios/{sid}/assumptions",
+            json={"fiscal_year_start_month": 13},
+            cookies=auth,
+        )
+        assert put_r.status_code == 422

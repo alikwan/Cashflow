@@ -5,9 +5,11 @@ Unified audit helper — reusable across all write endpoints (D1, D2, …).
 
 Usage (caller commits so that write + audit are one transaction):
 
-    from app.api.audit import record_audit
-    record_audit(db, user, "create_cap", "supplier_cap", cap.id,
-                 before=None, after=_to_dict(cap))
+    from app.api.audit import record_audit, to_audit_dict
+    before_dict = to_audit_dict(obj)   # capture BEFORE mutation
+    # … mutate obj …
+    record_audit(db, user, "update_thing", "thing", obj.id,
+                 before=before_dict, after=to_audit_dict(obj))
     db.commit()
 """
 from __future__ import annotations
@@ -22,7 +24,7 @@ from app.db.models import AuditLog
 
 
 # ---------------------------------------------------------------------------
-# Internal serialisation helper
+# Public serialisation helper
 # ---------------------------------------------------------------------------
 
 def _coerce(v: Any) -> Any:
@@ -34,9 +36,12 @@ def _coerce(v: Any) -> Any:
     return v
 
 
-def _to_dict(obj: Any) -> dict | None:
+def to_audit_dict(obj: Any) -> dict | None:
     """
     Convert an SQLAlchemy ORM row (or a plain dict) to a JSON-serializable dict.
+
+    Call this BEFORE mutating the ORM object to capture a before-snapshot.
+    Routers import this directly so they can capture state at the right moment.
 
     - If obj is already a dict, coerce values only.
     - If obj is an ORM instance, use its __table__.columns to enumerate columns.
@@ -83,8 +88,8 @@ def record_audit(
 
     Returns the (unflushed) AuditLog row for inspection in tests.
     """
-    before_dict = before if isinstance(before, dict) or before is None else _to_dict(before)
-    after_dict  = after  if isinstance(after,  dict) or after  is None else _to_dict(after)
+    before_dict = before if isinstance(before, dict) or before is None else to_audit_dict(before)
+    after_dict  = after  if isinstance(after,  dict) or after  is None else to_audit_dict(after)
 
     log = AuditLog(
         user_id=user.id if user is not None else None,

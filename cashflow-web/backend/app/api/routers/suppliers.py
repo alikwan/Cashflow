@@ -31,7 +31,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.audit import _to_dict, record_audit
+from app.api.audit import record_audit, to_audit_dict
 from app.api.deps import get_current_user, get_session
 from app.api.errors import ApiError
 from app.api.routers._utils import latest_snapshot_date, load_active_caps
@@ -191,7 +191,7 @@ def create_supplier_cap(
             entity="supplier_cap",
             entity_id=cap.id,
             before=None,
-            after=_to_dict(cap),
+            after=to_audit_dict(cap),
         )
         db.commit()
     except IntegrityError:

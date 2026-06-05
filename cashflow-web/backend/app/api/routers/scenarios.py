@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.audit import _to_dict, record_audit
+from app.api.audit import record_audit, to_audit_dict
 from app.api.deps import get_current_user, get_session
 from app.api.errors import ApiError
 from app.api.schemas import (
@@ -88,7 +88,7 @@ def create_scenario(
             entity="scenario",
             entity_id=scenario.id,
             before=None,
-            after=_to_dict(scenario),
+            after=to_audit_dict(scenario),
         )
         db.commit()
     except IntegrityError:
@@ -120,7 +120,7 @@ def update_scenario(
     if scenario is None:
         raise ApiError("not_found", f"السيناريو {scenario_id} غير موجود", 404)
 
-    before_dict = _to_dict(scenario)
+    before_dict = to_audit_dict(scenario)
 
     if body.name is not None:
         scenario.name = body.name
@@ -140,7 +140,7 @@ def update_scenario(
             entity="scenario",
             entity_id=scenario.id,
             before=before_dict,
-            after=_to_dict(scenario),
+            after=to_audit_dict(scenario),
         )
         db.commit()
     except IntegrityError:
@@ -171,7 +171,7 @@ def delete_scenario(
     if scenario is None:
         raise ApiError("not_found", f"السيناريو {scenario_id} غير موجود", 404)
 
-    before_dict = _to_dict(scenario)
+    before_dict = to_audit_dict(scenario)
 
     # Also delete linked assumptions (orphan cleanup before FK check)
     db.query(Assumption).filter(Assumption.scenario_id == scenario_id).delete(
@@ -224,7 +224,7 @@ def upsert_assumptions(
     existing: Assumption | None = (
         db.query(Assumption).filter(Assumption.scenario_id == scenario_id).first()
     )
-    before_dict = _to_dict(existing)  # None if no row yet
+    before_dict = to_audit_dict(existing)  # None if no row yet
 
     if existing is None:
         row = Assumption(scenario_id=scenario_id)
@@ -237,18 +237,23 @@ def upsert_assumptions(
     for field, value in update_data.items():
         setattr(row, field, Decimal(str(value)) if isinstance(value, float) else value)
 
-    db.flush()
+    try:
+        db.flush()  # INSERT may raise IntegrityError on uq_assumptions_per_scenario race
 
-    record_audit(
-        db, user,
-        action="update_assumptions",
-        entity="assumptions",
-        entity_id=scenario_id,
-        before=before_dict,
-        after=_to_dict(row),
-    )
+        record_audit(
+            db, user,
+            action="update_assumptions",
+            entity="assumptions",
+            entity_id=scenario_id,
+            before=before_dict,
+            after=to_audit_dict(row),
+        )
 
-    db.commit()
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise ApiError("conflict", "افتراضات لهذا السيناريو موجودة مسبقاً", 409)
+
     db.refresh(row)
 
     def _opt_float(v) -> float | None:
