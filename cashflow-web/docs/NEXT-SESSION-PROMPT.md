@@ -1,50 +1,58 @@
-# برومبت الجلسة القادمة — الخطة 2 (خلفية FastAPI)
+# برومبت الجلسة القادمة — الخطة 3 (واجهة React/Vite)
 
 > انسخ ما تحت الخط إلى بداية الجلسة الجديدة.
 
 ---
 
-أكمل بناء **نظام ويب لإدارة السيولة النقدية لمعرض البيت السعيد**. جلسة **استئناف** — **الخطتان 0 و1 مكتملتان** (الأساس + الـ ETL يملأ القاعدة فعلياً). ابدأ **الخطة 2 (خلفية FastAPI)**. نفّذ عبر **`superpowers:subagent-driven-development`** مع الالتزام بعد كل مهمة على فرع `cashflow-web`.
+أكمل بناء **نظام ويب لإدارة السيولة النقدية لمعرض البيت السعيد**. جلسة **استئناف** — **الخطط 0 و1 و2 مكتملة** (الأساس + ETL يملأ القاعدة + خلفية FastAPI كاملة ومُختبَرة ومُدخَّنة حيّاً). ابدأ **الخطة 3 (واجهة React/Vite)**. نفّذ عبر **`superpowers:subagent-driven-development`** مع الالتزام بعد كل مهمة على فرع `cashflow-web`.
 
 ## اقرأ أولاً (إلزامي قبل أي كود)
 - **الذاكرة التلقائية** `cashflow-web-project.md` (تُحمَّل تلقائياً — فيها كل الحالة والقرارات والمتبقّي والدروس).
-- **خطة الخطة 2:** `docs/superpowers/plans/2026-06-02-phase2-backend-api.md`
-- **المواصفة:** `docs/superpowers/specs/2026-06-01-cashflow-web-system-design.md` (§5 الخلفية، §8 الأمان، §12 خريطة `data.js`→API).
-- **عقد بيانات الواجهة:** `design-reference/project/src/data.js` (شكل المفاتيح التي تتوقّعها الواجهة — نقاط القراءة يجب أن تطابقها).
-- مرجع MSSQL/الأقساط عند اللزوم: DC-System `app/Services/ExternalData/Drivers/MssqlDriver.php`.
+- **خطة الخطة 3:** `docs/superpowers/plans/2026-06-02-phase3-frontend.md` (5 أجزاء A–E، بنية الملفات، اختبارات Vitest+MSW).
+- **المواصفة §7** (الواجهة الأمامية)، و**§7.5** (التحوّلات عن النموذج: data.js→api-client، التعديل السريع، شارة MAPE، شاشة الدخول).
+- **المرجع البصري الملزم:** `design-reference/project/src/` (نظام التصميم `colors_and_type.css`، `Shell.jsx`/`Primitives.jsx`/`Charts.jsx`، الصفحات الثماني، `data.js` كعقد بيانات، `tweaks-panel.jsx`) + لقطات `design-reference/project/screenshots/`.
 
-## الحالة (فرع `cashflow-web`، ~33 التزاماً، شجرة نظيفة)
-- ✅ **الخطة 0:** Postgres + مخطّط 20 جدولاً + هجرة Alembic + مستخدم `cashflow_ro` قراءة-فقط + `.env`.
-- ✅ **الخطة 1:** وحدات `domain/` نقية (classify/forecast/allocation/alerts) + خط `etl/` كامل (extract/load/reconcile/pipeline/scheduler). **قاعدة `cashflow` مملوءة** بالجداول السبعة (34 اختباراً تنجح).
-- ✅ **مراجعة معمارية/أمنية:** تحميل ذرّي عبر الجداول (معاملة واحدة) + لقطات تاريخية تتراكم + استبعاد الشهر الجزئي + ربط Postgres بـ`127.0.0.1` + تنظيف ملفات Excel.
+## الحالة (فرع `cashflow-web`، شجرة نظيفة، ~51 التزاماً)
+- ✅ **الخطة 0:** Postgres + مخطّط 20 جدولاً + هجرة Alembic + `cashflow_ro` + `.env`.
+- ✅ **الخطة 1:** وحدات `domain/` نقية + خط `etl/` كامل؛ قاعدة `cashflow` مملوءة.
+- ✅ **الخطة 2 (خلفية FastAPI):** **37 مساراً · 250 اختباراً ينجح · دُخّنت حيّاً ضد Postgres الحقيقي.** المغلّف الموحّد للأخطاء، مصادقة كوكي HttpOnly + argon2 + throttle، تدقيق `audit_log`، تصدير Excel/PDF (خط عربي مضمّن)، تشغيل ETL + جدولة ليلية. **الـ API كله snake_case ثابت.**
 
-## ابدأ الخطة 2 بهذا الترتيب
-0. **أولاً (مؤجّل من الخطة 1، لازم):** **زرع جدول `suppliers` بالـ14 مورّداً** (account_id + العملة IQD/USD/MIX + السقوف). المصدر: `pipeline.SUPPLIER_ACCOUNTS` + `analysis/build_excel.py:SUPPLIERS`. بدونه: التوزيع/السقوف/تنبيه `cap_exceeded` بلا بيانات.
-1. **نقاط القراءة (§5.1)** تطابق مفاتيح `data.js`: `/api/meta`, `/api/dashboard`, `/api/cashflow/monthly`, `/api/breakdown`, `/api/suppliers`, `/api/installments`, `/api/forecast`, `/api/supplier-plan`. (تقرأ الجداول التحليلية المملوءة + تستدعي `domain` للتوزيع/التنبؤ.)
-2. **المصادقة (§5.3):** جلسة كوكي HttpOnly + تجزئة argon2/bcrypt + بذر المستخدم الأول من `.env` + كبح محاولات الدخول.
-3. **نقاط الكتابة (§5.2):** suppliers/caps · scenarios/assumptions · payment-plans (+reconcile) · notes · alerts/ack · settings — مع مغلّف أخطاء JSON موحّد + 409 + `audit_log`.
-4. **تشغيل ETL:** `POST /api/etl/run` + `GET /api/etl/status` (القفل الأحادي جاهز) + جدولة `scheduler.build_scheduler` ليلاً.
-5. **تصدير** Excel/PDF.
+## 🔑 الـ API الذي ستستهلكه الواجهة (الخطة 2)
+- **قراءة:** `GET /api/meta · /api/dashboard · /api/cashflow/monthly?perspective=comprehensive|operational · /api/breakdown · /api/suppliers · /api/installments · /api/forecast?scenario_id= · /api/supplier-plan?month=YYYY-MM&scenario_id=`
+- **مصادقة:** `POST /api/auth/login {username,password}` (يضبط كوكي `session` HttpOnly) · `POST /api/auth/logout` · `GET /api/auth/me`. غير المصادَق → **401 بمغلّف** `{"error":{"code":"unauthorized","message":...}}`.
+- **كتابة:** `POST /api/suppliers/{account_id}/caps` · scenarios CRUD + `PUT /api/scenarios/{id}/assumptions` · payment-plans CRUD + `POST /api/payment-plans/{id}/reconcile` · notes GET/POST/DELETE · `POST /api/alerts/{id}/ack` · `GET/PUT /api/settings`. التعارض → **409** `code:"conflict"`؛ التحقّق → **422**.
+- **ETL/تصدير:** `POST /api/etl/run` (202/409) · `GET /api/etl/status` · `GET /api/export/excel` · `GET /api/export/pdf`.
+- **مغلّف الأخطاء موحّد** لكل 401/404/409/422/500 → `{"error":{"code","message"}}`. `api/client.js` يحوّل 4xx/5xx لاستثناء يحمل `status`+`error`، و401 → `AuthError`.
+- **بيانات الدخول (للتطوير):** `owner` / كلمة المرور في `cashflow-web/.env` (`APP_OWNER_PASSWORD`). create_app يرفض `APP_SECRET_KEY` الفارغ.
 
-## عالِجها في/قبل الخطة 2 (من المراجعة — مدوّنة في الذاكرة)
-- **قائمة جداول مسموحة** في `etl/load.py` (حقن كامن) قبل أن تلمسه أي مدخلات مستخدم.
-- **قيود فرادة:** `scenario_adjustments(scenario_id,series_key,year_month)` · `supplier_caps(supplier_id,effective_from)` · `payment_plan_lines(payment_plan_id,supplier_id)` · سيناريو أساسي واحد (partial unique على `is_baseline`). (هجرة جديدة.)
-- **ربط `audit_log`** بكل كتابة إدارية · **مُحقّق `app_secret_key`** غير فارغ قبل الجلسات.
-- `numpy` لـ pyproject · لفّ pymssql بـ SQLAlchemy (تحذير DBAPI2) · فئة `OpType=1&to_type=2110` (سحب رأس مال ~14M مُهمَل).
+## ⚠️ أول قرار في الخطة 3 — CORS / الوصول من المتصفّح
+الخلفية **لا تحوي CORS عمداً**. عند تطوير Vite (منفذ 5173، أصل مختلف عن الخلفية) **لن تُرسَل كوكي الجلسة عبر الأصول**. الخياران:
+- **(مُفضَّل للتطوير)** **Vite dev proxy:** في `vite.config.js` وجّه `/api` إلى الخلفية (مثل `server.proxy['/api'] = 'http://127.0.0.1:8000'`) — يصبح same-origin من منظور المتصفّح، الكوكي يعمل، **بلا تعديل خلفية**.
+- **(بديل)** أضِف `CORSMiddleware(allow_credentials=True, allow_origins=["http://localhost:5173"])` في `app/main.py`. **للإنتاج:** nginx يخدم بناء React + الـ API خلف نفس المضيف (same-origin، §9) — لا CORS.
+استخدم `credentials:"include"` في كل نداءات `fetch`.
+
+## ابدأ الخطة 3 بهذا الترتيب (Chunks A–E)
+- **A1 — السقالة:** Vite+React، نسخ `colors_and_type.css` حرفياً، `index.html` بـ`<html dir="rtl" lang="ar">`، خطوط Cairo/Tajawal. (اختبار دخان: التطبيق يُركّب + `document.dir==="rtl"`.)
+- **B1 — `api/client.js`:** fetch موحّد (`credentials:"include"`، يفكّ مغلّف الأخطاء، 401→`AuthError`). **B2 — `AuthContext` + `Login.jsx` + حارس المسارات** (يستدعي `/api/auth/me` عند الإقلاع؛ لا مستخدم → شاشة دخول).
+- **C1 — نقل `Primitives.jsx`+`Charts.jsx`+`lib/format.js`** (تحويل `window.*`→`export`، إبقاء الأنماط بكسلياً). **C2 — نقل `Shell.jsx`** (قائمة يمنى بالصفحات الثماني + Header + بحث + جرس تنبيهات؛ تُغذّى من API).
+- **D1 — `api/hooks.js`** (`useDashboard/useCashflow/useSuppliers/...` تعيد `{data,loading,error}`). **🔑 طبقة التطابق:** الـ hooks تحوّل مفاتيح snake_case → أسماء المكوّنات (camelCase/المتداخلة: `s.cur`/`s.overCap`/`pool`/`m.in`/`negThreshold`↔`neg_threshold_m`…). مساعد اختبار مشترك `renderWithProviders`+MSW في `tests/setup.js`. **D2** اللوحة+الشهري+المقبوضات/المصروفات. **D3** الموردون+الأقساط+التنبؤ (شارة MAPE/الثقة)+توزيع الموردين.
+- **E1 — الإعدادات** (حفظ عبر `PUT /api/settings` و`/api/suppliers/{id}/caps`) + **`TweaksPanel` داخلية متاحة دائماً** (لا أداة postMessage) + **Toasts** عبر سياق React (`ToastHost`، لا `window.showToast`).
+
+## ⚠️ دروس حرجة تنتقل للواجهة (لا تكرّرها)
+- **توزيع الموردين (الخيار 1):** الموردون الدولاريون (الحافظ/المهندس/ميديا فوكس/الريان) `allocated_m=0` ويُعرَضون كـ **«مموَّلون عبر الصيرفة»** لا حصة من المجمّع. لا تنسخ `allocate()` من `data.js` حرفياً في `SupplierPlan.jsx` — الدلالات تغيّرت.
+- **الأقساط:** القائم الحقيقي ≈**1.3 مليار** (لا 4.67) — اعرض ما تُرجعه `/api/installments` كما هو.
+- **الرصيد الجاري:** الافتتاحي سالب (back-solve) — اعرضه **كاتجاه نسبي لا رقماً مطلقاً** حتى تتراكم لقطات الأرصدة.
+- **شارة MAPE/الثقة** على صفحة التنبؤ (عالية/متوسطة/منخفضة) كي لا تُقرأ التوقعات كحقائق.
+- RTL + أرقام لاتينية + `tabular-nums`؛ احترم `prefers-reduced-motion`.
 
 ## قرارات مثبّتة (لا تغيّرها دون إذن المالك)
-FastAPI + React/Vite · مستخدم واحد محلي · ETL ليلي → PostgreSQL منفصلة · `AlBaytAlSaeid` قراءة فقط · التصنيف `OperationsType` + الحساب المقابل (يلتقط الصيرفة) · الصيرفة الخيار 1 (توزيع لموردي الدينار فقط) · Asia/Baghdad · تحميل ذرّي.
-
-## ⚠️ دروس حرجة (لا تكرّرها)
-- **الأقساط:** `PremiumPays.Amount` = الرصيد المتبقّي لا المدفوع (DC-System)؛ قائم ≈1.26–1.32B. **لا منطق `build_excel.py` المقلوب.**
-- `Amount1` بالدينار — **لا تضربه بـ `Rate1`**. فلتر `Deleted=0` و`IsEdit=0` واستبعد المستقبلية.
-- الرصيد الافتتاحي سالب (back-solve + نقص بيانات الصناديق)؛ `reconciliation_residual_m=0` حتى تتراكم لقطات `balances_snapshot` (يصير حقيقياً تلقائياً مع الزمن). اعرض الرصيد الجاري كاتجاه نسبي لا رقماً مطلقاً.
+FastAPI + React/Vite · مستخدم واحد محلي · ETL ليلي → PostgreSQL منفصلة · `AlBaytAlSaeid` قراءة فقط · التصنيف `OperationsType`+الحساب المقابل · الصيرفة الخيار 1 · Asia/Baghdad · `design-reference/` مرجع بصري ملزم (pixel-parity).
 
 ## ⏸️ مؤجّل للإنتاج (بقرار المالك — لا تنفّذه الآن)
-كلمة مرور SA المكشوفة (`build_excel.py:29` + تاريخ git) → تدوير + نقل لـ`.env` + `git filter-repo` (يمسح أيضاً تاريخ ملفات Excel دفعةً). وربط MSSQL على مستوى الشبكة/جدار الحماية (برنامج المحاسبة يصله عبر LAN).
+كلمة مرور SA المكشوفة (`build_excel.py:29` + تاريخ git) → تدوير + `.env` + `git filter-repo`. ربط MSSQL على مستوى الشبكة/جدار الحماية. (الخطة 4 = docker-compose الكامل + نسخ احتياطي/استعادة + e2e + نشر.)
 
 ## البيئة
-- venv بـ **python3.12** في `cashflow-web/backend/.venv` (شغّل: `cd cashflow-web/backend && .venv/bin/python -m pytest`).
-- Postgres: حاوية `cashflow-postgres` على `127.0.0.1:5433` (قاعدتان: `cashflow` مملوءة + `cashflow_test`). MSSQL: `mssql-server`، مستخدم `cashflow_ro`.
-- الأسرار في `cashflow-web/.env` (غير متعقّب). تشغيل ETL يدوياً: `from app.etl.pipeline import run_etl; from app.etl.extract import connect_mssql` + session لـ `settings.postgres_url`.
-- تأكّد أولاً: `docker ps | grep -E 'mssql-server|cashflow-postgres'`.
+- **الخلفية:** `cashflow-web/backend/.venv` (python3.12). شغّلها للواجهة: `cd cashflow-web/backend && .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000`. الاختبارات: `.venv/bin/python -m pytest` (250 تنجح).
+- **الواجهة (ستُنشأ):** `cashflow-web/frontend/` (Vite). الاختبارات: `npm test` (Vitest+RTL+MSW).
+- **Docker:** `cashflow-postgres` على `127.0.0.1:5433` (قاعدة `cashflow` مملوءة + `cashflow_test`) · `mssql-server`. تأكّد أولاً: `docker ps | grep -E 'mssql-server|cashflow-postgres'`.
+- الأسرار في `cashflow-web/.env` (غير متعقّب).
