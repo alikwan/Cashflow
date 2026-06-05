@@ -23,6 +23,7 @@ Auth: requires valid session cookie (get_current_user dependency).
 """
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date
 from typing import Optional
 
@@ -30,6 +31,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_session
+from app.api.routers._utils import latest_snapshot_date
 from app.api.schemas import SupplierOut, SuppliersResponse
 from app.db.models import BalancesSnapshot, PerSupplierMonthly, Supplier, SupplierCap
 
@@ -91,7 +93,6 @@ def get_suppliers(
         .all()
     )
     # Group by account_id → sorted list of paid_m
-    from collections import defaultdict
     psm_by_account: dict[int, list[float]] = defaultdict(list)
     for row in all_psm:
         psm_by_account[row.supplier_account_id].append(float(row.paid_m))
@@ -102,13 +103,7 @@ def get_suppliers(
     # ------------------------------------------------------------------
     # 4. Latest balances_snapshot for supplier accounts
     # ------------------------------------------------------------------
-    latest_snap: date | None = (
-        db.query(BalancesSnapshot.snapshot_date)
-        .filter(BalancesSnapshot.account_kind == "supplier")
-        .order_by(BalancesSnapshot.snapshot_date.desc())
-        .limit(1)
-        .scalar()
-    )
+    latest_snap: date | None = latest_snapshot_date(db, ["supplier"])
     balance_by_account: dict[int, float] = {}
     if latest_snap is not None:
         snap_rows: list[BalancesSnapshot] = (

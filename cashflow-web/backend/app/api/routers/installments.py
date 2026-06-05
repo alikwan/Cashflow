@@ -29,6 +29,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_session
+from app.api.routers._utils import latest_snapshot_date
 from app.api.schemas import (
     AgingBucketOut,
     BalanceEntryOut,
@@ -101,13 +102,7 @@ def get_installments(
     # ------------------------------------------------------------------
     # 3. Top debtors — latest balances_snapshot where account_kind='debtor'
     # ------------------------------------------------------------------
-    debtor_snap: Optional[date] = (
-        db.query(BalancesSnapshot.snapshot_date)
-        .filter(BalancesSnapshot.account_kind == "debtor")
-        .order_by(BalancesSnapshot.snapshot_date.desc())
-        .limit(1)
-        .scalar()
-    )
+    debtor_snap: Optional[date] = latest_snapshot_date(db, ["debtor"])
     top_debtors: list[BalanceEntryOut] = []
     if debtor_snap is not None:
         debtor_rows: list[BalancesSnapshot] = (

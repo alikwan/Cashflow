@@ -28,6 +28,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_session
+from app.api.routers._utils import latest_snapshot_date
 from app.api.schemas import (
     BalanceEntryOut,
     BreakdownResponse,
@@ -76,7 +77,6 @@ def get_breakdown(
             monthly_entries.append(ExpenseCatMonthly(year_month=r.year_month, amount_m=val))
         expense_cats.append(ExpenseCatOut(
             key=key,
-            column=col,
             total_m=total,
             monthly=monthly_entries,
         ))
@@ -84,12 +84,7 @@ def get_breakdown(
     # ------------------------------------------------------------------
     # 3. Latest snapshot_date from balances_snapshot
     # ------------------------------------------------------------------
-    latest_snap: date | None = (
-        db.query(BalancesSnapshot.snapshot_date)
-        .order_by(BalancesSnapshot.snapshot_date.desc())
-        .limit(1)
-        .scalar()
-    )
+    latest_snap: date | None = latest_snapshot_date(db, ["partner", "cashbox"])
 
     partners: list[BalanceEntryOut] = []
     funds: list[BalanceEntryOut] = []

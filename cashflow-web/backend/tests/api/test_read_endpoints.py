@@ -302,10 +302,11 @@ def test_breakdown_six_expense_cats(client, seed_analytics, auth):
 
 
 def test_breakdown_expense_cats_shape(client, seed_analytics, auth):
-    """Each category has key, column, total_m, monthly."""
+    """Each category has key, total_m, monthly (column field removed from contract)."""
     r = client.get("/api/breakdown", cookies=auth).json()
     for cat in r["expense_cats"]:
-        assert {"key", "column", "total_m", "monthly"} <= set(cat)
+        assert {"key", "total_m", "monthly"} <= set(cat)
+        assert "column" not in cat
         assert isinstance(cat["monthly"], list)
         assert len(cat["monthly"]) == 24  # 24 seeded months
 
@@ -416,10 +417,10 @@ def test_suppliers_cap_values(client, seed_analytics, auth):
 
 
 def test_suppliers_over_cap(client, seed_analytics, auth):
-    """Supplier 2432 (cap=15) with a month paid_m=18 has over_cap >= 1."""
+    """Supplier 2432 (cap=15) has exactly one month (paid_m=18) over cap."""
     r = client.get("/api/suppliers", cookies=auth).json()
     sups = {s["id"]: s for s in r["suppliers"]}
-    assert sups[2432]["over_cap"] >= 1
+    assert sups[2432]["over_cap"] == 1
 
 
 def test_suppliers_monthly_is_list(client, seed_analytics, auth):
@@ -455,12 +456,13 @@ def test_suppliers_util_when_cap_zero(client, seed_analytics, auth):
 
 
 def test_suppliers_util_when_cap_positive(client, seed_analytics, auth):
-    """util is a float when cap > 0 and monthly data exists."""
+    """util for supplier 2432 is exact: avg([18,10×11])/15 = (128/12)/15 ≈ 0.711."""
     r = client.get("/api/suppliers", cookies=auth).json()
     sups = {s["id"]: s for s in r["suppliers"]}
-    # 2432 cap=15, has monthly data → util should be non-null
+    # 2432: 12 months seeded (18, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10)
+    # sum=128, avg=128/12, util=(128/12)/15 = 128/180 ≈ 0.7111
     assert sups[2432]["util"] is not None
-    assert isinstance(sups[2432]["util"], float)
+    assert sups[2432]["util"] == pytest.approx(128 / 180, rel=0.02)
 
 
 def test_suppliers_currency(client, seed_analytics, auth):

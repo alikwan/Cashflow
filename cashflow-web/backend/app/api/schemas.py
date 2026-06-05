@@ -163,7 +163,6 @@ class ExpenseCatMonthly(BaseModel):
 class ExpenseCatOut(BaseModel):
     """One expense category with totals + monthly series."""
     key: str
-    column: str
     total_m: float
     monthly: list[ExpenseCatMonthly]
 
