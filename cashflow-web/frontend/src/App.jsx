@@ -1,9 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import Login from "./auth/Login";
-import { ToastProvider, Card } from "./components/Primitives";
+import { ToastProvider } from "./components/Primitives";
 import { AppShell, buildSearchIndex } from "./components/Shell";
-import { useMeta, useDashboard, useSuppliers, useInstallments } from "./api/hooks";
+import { TweaksPanel } from "./components/TweaksPanel";
+import {
+  useMeta,
+  useDashboard,
+  useSuppliers,
+  useInstallments,
+  useSettings,
+} from "./api/hooks";
 import { Dashboard } from "./pages/Dashboard";
 import { MonthlyFlow } from "./pages/MonthlyFlow";
 import { Breakdown } from "./pages/Breakdown";
@@ -11,6 +18,57 @@ import { Suppliers } from "./pages/Suppliers";
 import { Installments } from "./pages/Installments";
 import { Forecast } from "./pages/Forecast";
 import { SupplierPlan } from "./pages/SupplierPlan";
+import { Settings } from "./pages/Settings";
+
+// Accent name → CSS custom-property overrides applied inline on <html>. أزرق is
+// the DEFAULT and is intentionally NOT listed here: for أزرق we REMOVE every
+// override (see the accent effect) so the stylesheet's original blue tokens
+// apply — a guaranteed-exact reset rather than a re-hardcoded blue.
+//
+// Each non-default accent sets BOTH the semantic button vars
+// (`--color-primary`/`--color-primary-hover`, which color `.btn-primary` and
+// `.btn-secondary` incl. the Save button) AND the fuller `--primary-*` ramp
+// (50/100/200/500/600/700) that charts, badges, and info-banners read — so the
+// buttons, chart bars, and banners all recolor coherently, not just a few tints.
+const ACCENT_PALETTE = {
+  كحلي: {
+    "--color-primary": "#4F46E5",
+    "--color-primary-hover": "#4338CA",
+    "--primary-50": "#EEF2FF",
+    "--primary-100": "#E0E7FF",
+    "--primary-200": "#C7D2FE",
+    "--primary-500": "#6366F1",
+    "--primary-600": "#4F46E5",
+    "--primary-700": "#4338CA",
+  },
+  أخضر: {
+    "--color-primary": "#0D9488",
+    "--color-primary-hover": "#0F766E",
+    "--primary-50": "#F0FDFA",
+    "--primary-100": "#CCFBF1",
+    "--primary-200": "#99F6E4",
+    "--primary-500": "#14B8A6",
+    "--primary-600": "#0D9488",
+    "--primary-700": "#0F766E",
+  },
+};
+
+// The full set of CSS vars any accent can touch — used to REMOVE inline overrides
+// for the default (أزرق) and on cleanup (unmount/logout) so the stylesheet
+// defaults always cleanly reapply (no accent leak across logout).
+const ACCENT_VARS = [
+  "--color-primary",
+  "--color-primary-hover",
+  "--primary-50",
+  "--primary-100",
+  "--primary-200",
+  "--primary-500",
+  "--primary-600",
+  "--primary-700",
+];
+
+// §9 nullable-assumption fallbacks (mirror Settings/data.js defaults).
+const FALLBACK = { reserve: 15, usd: 1350, fyStart: 5, incomeGrowth: 0 };
 
 // Root application component.
 //
@@ -76,8 +134,67 @@ function AuthedApp() {
   const dash = useDashboard();
   const suppliers = useSuppliers();
   const installments = useInstallments();
+  // Persistent settings (the saved baseline). The TweaksPanel applies live,
+  // unsaved overrides on top; the Settings page is the persistent editor.
+  const settings = useSettings();
 
-  const exchangeRate = meta.data?.exchangeRate ?? 0;
+  // The saved effective settings, with §9 fallbacks (settings → meta → static).
+  const effective = useMemo(() => {
+    const s = settings.data || {};
+    const m = meta.data || {};
+    const caps = {};
+    for (const sup of suppliers.data?.suppliers ?? []) caps[sup.id] = sup.cap ?? 0;
+    return {
+      accent: s.accent ?? "أزرق",
+      showAlert: s.showAlert ?? true,
+      negThreshold: s.negThreshold ?? 0,
+      overCapWarn: s.overCapWarn ?? true,
+      exchangeRate: s.exchangeRate ?? m.USD_RATE ?? FALLBACK.usd,
+      reserve: s.reserve ?? m.RESERVE_M ?? FALLBACK.reserve,
+      fyStart: s.fyStart ?? m.fyStart ?? FALLBACK.fyStart,
+      incomeGrowth: s.incomeGrowth ?? FALLBACK.incomeGrowth,
+      caps,
+    };
+  }, [settings.data, meta.data, suppliers.data]);
+
+  // Live tweaks state = the effective settings + any in-app TweaksPanel patches.
+  // Re-seed from `effective` whenever the saved baseline loads/changes (e.g.
+  // after a Settings save refetches). `patchSettings` applies live overrides.
+  const [tweaks, setTweaks] = useState(null);
+  useEffect(() => {
+    setTweaks(effective);
+  }, [effective]);
+  const patchSettings = (patch) => setTweaks((t) => ({ ...(t || effective), ...patch }));
+
+  // The live, in-effect settings (tweaks once seeded; else the effective base).
+  const live = tweaks || effective;
+
+  // Apply the accent live: recolor the primary CSS custom properties on the
+  // document root whenever the live accent changes. For a non-default accent we
+  // set its ramp + button vars; for أزرق (or any unknown value) we REMOVE every
+  // accent override so the stylesheet's original tokens reapply exactly.
+  // The cleanup removes all accent overrides on unmount (e.g. logout), so Login
+  // never renders with the previous accent leaking onto <html>.
+  useEffect(() => {
+    const root = document.documentElement;
+    const palette = ACCENT_PALETTE[live.accent];
+    if (palette) {
+      for (const [k, v] of Object.entries(palette)) root.style.setProperty(k, v);
+      // Clear any vars NOT in this palette (defensive — all current accents set
+      // the same var set, but this keeps switching between accents clean).
+      for (const name of ACCENT_VARS) {
+        if (!(name in palette)) root.style.removeProperty(name);
+      }
+    } else {
+      // أزرق / default: drop all inline overrides → stylesheet defaults win.
+      for (const name of ACCENT_VARS) root.style.removeProperty(name);
+    }
+    return () => {
+      for (const name of ACCENT_VARS) root.style.removeProperty(name);
+    };
+  }, [live.accent]);
+
+  const exchangeRate = live.exchangeRate ?? meta.data?.exchangeRate ?? 0;
   const alerts = dash.data?.alerts ?? [];
   const searchIndex = buildSearchIndex(
     suppliers.data?.suppliers ?? [],
@@ -87,7 +204,7 @@ function AuthedApp() {
   const renderPage = () => {
     switch (active) {
       case "dashboard":
-        return <Dashboard onNavigate={setActive} />;
+        return <Dashboard onNavigate={setActive} showAlert={live.showAlert} />;
       case "monthly":
         return <MonthlyFlow onNavigate={setActive} />;
       case "breakdown":
@@ -97,51 +214,51 @@ function AuthedApp() {
       case "installments":
         return <Installments onNavigate={setActive} />;
       case "forecast":
-        return <Forecast onNavigate={setActive} />;
+        return (
+          <Forecast
+            onNavigate={setActive}
+            reserve={live.reserve}
+            incomeGrowth={live.incomeGrowth}
+          />
+        );
       case "supplierplan":
-        return <SupplierPlan onNavigate={setActive} />;
-      // Page not yet built (Task E1) — minimal on-brand placeholder.
+        // SupplierPlan's pool is computed server-side (it reads only `reserve`,
+        // not `incomeGrowth` — the income-growth re-projection is a Forecast-page
+        // concern). Feed the live reserve.
+        return <SupplierPlan onNavigate={setActive} reserve={live.reserve} />;
       case "settings":
+        // After a Settings save, refresh ALL app-level hooks that feed live
+        // chrome/pages: settings (the saved baseline → tweaks reseed), suppliers
+        // (Shell search + Suppliers page caps), and meta (assumptions may change).
+        return (
+          <Settings
+            onSaved={() => {
+              settings.refetch();
+              suppliers.refetch();
+              meta.refetch();
+            }}
+          />
+        );
       default:
-        return <PendingPage />;
+        return <Dashboard onNavigate={setActive} showAlert={live.showAlert} />;
     }
   };
 
   return (
-    <AppShell
-      active={active}
-      onNavigate={setActive}
-      exchangeRate={exchangeRate}
-      alerts={alerts}
-      searchIndex={searchIndex}
-      onLogout={logout}
-    >
-      {renderPage()}
-    </AppShell>
-  );
-}
-
-// Minimal on-brand placeholder for the pages still to be wired (D3/E1).
-function PendingPage() {
-  return (
-    <div style={{ padding: "24px 28px 48px" }}>
-      <Card style={{ maxWidth: 520, margin: "32px auto", textAlign: "center" }}>
-        <div
-          style={{
-            fontFamily: "Tajawal",
-            fontWeight: 700,
-            fontSize: 18,
-            color: "var(--slate-900)",
-            marginBottom: 6,
-          }}
-        >
-          قيد الإنشاء
-        </div>
-        <div style={{ fontSize: 13.5, color: "var(--slate-500)", lineHeight: 1.6 }}>
-          هذه الصفحة قيد الإنشاء وستتوفّر قريباً.
-        </div>
-      </Card>
-    </div>
+    <>
+      <AppShell
+        active={active}
+        onNavigate={setActive}
+        exchangeRate={exchangeRate}
+        alerts={alerts}
+        searchIndex={searchIndex}
+        onLogout={logout}
+      >
+        {renderPage()}
+      </AppShell>
+      {/* Always-available in-app quick-tweaks panel (every page). */}
+      <TweaksPanel settings={tweaks} onChange={patchSettings} />
+    </>
   );
 }
 
