@@ -1,6 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import Login from "./auth/Login";
+import { ToastProvider, Card } from "./components/Primitives";
+import { AppShell, buildSearchIndex } from "./components/Shell";
+import { useMeta, useDashboard, useSuppliers, useInstallments } from "./api/hooks";
+import { Dashboard } from "./pages/Dashboard";
+import { MonthlyFlow } from "./pages/MonthlyFlow";
+import { Breakdown } from "./pages/Breakdown";
 
 // Root application component.
 //
@@ -26,7 +32,7 @@ export default function App() {
 // single-page shell whose active page is React state (lands in Tasks C2/D2).
 // The guard is purely: loading → loader; no user → Login; user → app area.
 function Guarded() {
-  const { user, loading, logout } = useAuth();
+  const { user, loading } = useAuth();
 
   if (loading) {
     return (
@@ -43,17 +49,90 @@ function Guarded() {
     return <Login />;
   }
 
-  // TODO(C2): replace with <Shell/> + the active page switcher.
+  // Authenticated: the real shell + active-page switcher. ToastProvider wraps the
+  // shell so the pages' `useToast()` works (it also renders ToastHost itself).
   return (
-    <div style={authedStyles.page}>
-      <div style={authedStyles.panel}>
-        <p style={authedStyles.welcome}>
-          مرحباً، {user.display_name || user.username}
-        </p>
-        <button type="button" onClick={logout} style={authedStyles.logout}>
-          تسجيل الخروج
-        </button>
-      </div>
+    <ToastProvider>
+      <AuthedApp />
+    </ToastProvider>
+  );
+}
+
+// The signed-in single-page app: the AppShell (sidebar + header + content) with
+// React state for the active page. No react-router by design.
+function AuthedApp() {
+  const [active, setActive] = useState("dashboard");
+  // Logout lives in auth context; threaded into AppShell as a prop so the Shell
+  // components never call useAuth() (they're rendered standalone in shell tests).
+  const { logout } = useAuth();
+
+  // App-level chrome data: the exchange-rate pill, the notifications bell, and
+  // the global search index. Safe fallbacks while these load.
+  const meta = useMeta();
+  const dash = useDashboard();
+  const suppliers = useSuppliers();
+  const installments = useInstallments();
+
+  const exchangeRate = meta.data?.exchangeRate ?? 0;
+  const alerts = dash.data?.alerts ?? [];
+  const searchIndex = buildSearchIndex(
+    suppliers.data?.suppliers ?? [],
+    installments.data?.topDebtors ?? []
+  );
+
+  const renderPage = () => {
+    switch (active) {
+      case "dashboard":
+        return <Dashboard onNavigate={setActive} />;
+      case "monthly":
+        return <MonthlyFlow onNavigate={setActive} />;
+      case "breakdown":
+        return <Breakdown onNavigate={setActive} />;
+      // Pages not yet built (Tasks D3/E1) — minimal on-brand placeholder.
+      case "suppliers":
+      case "installments":
+      case "forecast":
+      case "supplierplan":
+      case "settings":
+      default:
+        return <PendingPage />;
+    }
+  };
+
+  return (
+    <AppShell
+      active={active}
+      onNavigate={setActive}
+      exchangeRate={exchangeRate}
+      alerts={alerts}
+      searchIndex={searchIndex}
+      onLogout={logout}
+    >
+      {renderPage()}
+    </AppShell>
+  );
+}
+
+// Minimal on-brand placeholder for the pages still to be wired (D3/E1).
+function PendingPage() {
+  return (
+    <div style={{ padding: "24px 28px 48px" }}>
+      <Card style={{ maxWidth: 520, margin: "32px auto", textAlign: "center" }}>
+        <div
+          style={{
+            fontFamily: "Tajawal",
+            fontWeight: 700,
+            fontSize: 18,
+            color: "var(--slate-900)",
+            marginBottom: 6,
+          }}
+        >
+          قيد الإنشاء
+        </div>
+        <div style={{ fontSize: 13.5, color: "var(--slate-500)", lineHeight: 1.6 }}>
+          هذه الصفحة قيد الإنشاء وستتوفّر قريباً.
+        </div>
+      </Card>
     </div>
   );
 }
@@ -73,45 +152,5 @@ const loaderStyles = {
     border: "3px solid var(--slate-200)",
     borderTopColor: "var(--primary-600)",
     animation: "app-spin 0.7s linear infinite",
-  },
-};
-
-const authedStyles = {
-  page: {
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "var(--color-bg)",
-    padding: "var(--space-lg)",
-  },
-  panel: {
-    background: "var(--color-surface)",
-    border: "1px solid var(--color-border-light)",
-    borderRadius: "var(--radius-lg)",
-    boxShadow: "var(--shadow-card)",
-    padding: "var(--space-2xl) var(--space-xl)",
-    textAlign: "center",
-    display: "flex",
-    flexDirection: "column",
-    gap: "var(--space-md)",
-  },
-  welcome: {
-    fontFamily: "var(--font-heading)",
-    fontSize: "var(--fs-h3)",
-    fontWeight: 700,
-    color: "var(--color-text)",
-    margin: 0,
-  },
-  logout: {
-    padding: "10px 24px",
-    borderRadius: "var(--radius-sm)",
-    border: "1.5px solid var(--color-primary)",
-    background: "transparent",
-    color: "var(--color-primary)",
-    fontFamily: "var(--font-body)",
-    fontWeight: 600,
-    fontSize: "var(--fs-sm)",
-    cursor: "pointer",
   },
 };

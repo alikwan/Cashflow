@@ -78,10 +78,17 @@ test("valid credentials log in and leave the login screen", async () => {
 
   submitLogin("ali", "correct");
 
-  // The authed placeholder shows the logged-in display name + logout button.
-  expect(await screen.findByText(/علي السامرائي/)).toBeInTheDocument();
+  // Logging in leaves the login screen and lands in the authed shell (Task D2).
+  // The load-bearing proof is that the AppShell mounted: the "اللوحة التنفيذية"
+  // sidebar/breadcrumb appears. (The owner name "علي السامرائي" is a hardcoded
+  // string in Shell.jsx — its presence confirms the sidebar rendered, NOT that
+  // the name is auth-driven.) The logout button now also exists in the footer.
   expect(
-    screen.getByRole("button", { name: /تسجيل الخروج/ })
+    (await screen.findAllByText("اللوحة التنفيذية")).length
+  ).toBeGreaterThan(0);
+  expect(screen.getByText(/علي السامرائي/)).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "تسجيل الخروج" })
   ).toBeInTheDocument();
 });
 

@@ -30,6 +30,24 @@ test("sidebar lists all 8 nav items", () => {
   ].forEach((t) => expect(screen.getByText(t)).toBeInTheDocument());
 });
 
+// ---- Sidebar: logout control (threaded via onLogout prop) -------------
+test("clicking the sidebar logout control calls onLogout", () => {
+  const onLogout = vi.fn();
+  render(<Sidebar active="dashboard" onNavigate={() => {}} onLogout={onLogout} />);
+  fireEvent.click(screen.getByRole("button", { name: "تسجيل الخروج" }));
+  expect(onLogout).toHaveBeenCalledTimes(1);
+});
+
+// ---- Sidebar: no logout control when onLogout is omitted --------------
+// (Standalone renders without an AuthProvider must not crash; the footer just
+// omits the logout affordance.)
+test("sidebar omits the logout control when no onLogout is provided", () => {
+  render(<Sidebar active="dashboard" onNavigate={() => {}} />);
+  expect(
+    screen.queryByRole("button", { name: "تسجيل الخروج" })
+  ).not.toBeInTheDocument();
+});
+
 // ---- Sidebar / NavButton: clicking navigates --------------------------
 test("clicking a nav item calls onNavigate with its id", () => {
   const onNavigate = vi.fn();

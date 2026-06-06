@@ -47,7 +47,7 @@ const PAGE_META = {
 };
 const PAGE_LABEL = (id) => (PAGE_META[id] || {}).crumb || id;
 
-function Sidebar({ active, onNavigate }) {
+function Sidebar({ active, onNavigate, onLogout }) {
   return (
     <aside style={{ width: 256, flex: 'none', background: '#fff', borderLeft: '1px solid var(--slate-200)',
       display: 'flex', flexDirection: 'column', height: '100vh', position: 'sticky', top: 0, zIndex: 20 }}>
@@ -76,6 +76,16 @@ function Sidebar({ active, onNavigate }) {
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--slate-800)', lineHeight: 1.2 }}>علي السامرائي</div>
             <div style={{ fontSize: 11, color: 'var(--slate-500)', marginTop: 2 }}>صاحب المعرض</div>
           </div>
+          {onLogout && (
+            <button onClick={() => onLogout?.()} title="تسجيل الخروج" aria-label="تسجيل الخروج"
+              style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer',
+                color: 'var(--slate-500)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                flex: 'none', marginInlineStart: 'auto', transition: 'background 150ms, color 150ms' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--slate-100)'; e.currentTarget.style.color = 'var(--slate-700)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--slate-500)'; }}>
+              <Icon name="logout" className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
     </aside>
@@ -269,10 +279,10 @@ function PageHeader({ title, subtitle, actions }) {
 // then borders the content column to its left, matching screenshots/dashboard.png.
 // The main column holds the sticky Header on top and a scrollable, padded
 // content area below that renders the active page (children).
-function AppShell({ active, onNavigate, exchangeRate, alerts, searchIndex, children }) {
+function AppShell({ active, onNavigate, exchangeRate, alerts, searchIndex, onLogout, children }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'row', minHeight: '100vh', background: 'var(--slate-50)' }}>
-      <Sidebar active={active} onNavigate={onNavigate} />
+      <Sidebar active={active} onNavigate={onNavigate} onLogout={onLogout} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <Header page={active} onNavigate={onNavigate} exchangeRate={exchangeRate} alerts={alerts} searchIndex={searchIndex} />
         <div style={{ flex: 1, minWidth: 0, padding: 24 }}>
