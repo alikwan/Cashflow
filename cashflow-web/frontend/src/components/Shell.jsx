@@ -116,7 +116,10 @@ function buildSearchIndex(suppliers = [], topDebtors = []) {
   const items = [];
   Object.keys(PAGE_META).forEach(id => items.push({ kind: 'صفحة', label: PAGE_META[id].crumb, icon: PAGE_META[id].icon, page: id }));
   (suppliers || []).forEach(s => items.push({ kind: 'مورد', label: s.name, icon: 'truck', page: 'suppliers' }));
-  (topDebtors || []).forEach(d => items.push({ kind: 'مدين', label: d.name, icon: 'users', page: 'installments', meta: `عقد ${d.contract}` }));
+  // top_debtors is ACCOUNT-LEVEL (no contract number — mapInstallments drops it),
+  // so reference the account id instead. If even that is absent, omit `meta`
+  // entirely rather than render the literal "حساب undefined".
+  (topDebtors || []).forEach(d => items.push({ kind: 'مدين', label: d.name, icon: 'users', page: 'installments', meta: d.accountId != null ? `حساب ${d.accountId}` : undefined }));
   return items;
 }
 
