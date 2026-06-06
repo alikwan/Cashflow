@@ -2,14 +2,15 @@
 //   GET  /api/auth/me     → 401 (unauthed) until login, then 200.
 //   POST /api/auth/login  → 200 {username, display_name} | 401 | 429.
 //
-// MSW lifecycle and handlers are kept LOCAL to this file on purpose — Task D1
-// will later centralize MSW + a renderWithProviders helper. We render <App/>
-// standalone (the AuthProvider lives INSIDE App), matching the plan's test.
+// MSW is now centralized (Task D1): this file registers its /api/auth/*
+// handlers on the SHARED server via `server.use(...)`, and the server lifecycle
+// (listen / reset / close) lives in tests/setup.js. We render <App/> standalone
+// (the AuthProvider lives INSIDE App), matching the plan's test.
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { setupServer } from "msw/node";
 import App from "../src/App";
 import { AuthProvider, useAuth } from "../src/auth/AuthContext";
+import { server } from "./setup";
 
 // Unified backend error envelope: { error: { code, message } }.
 const envelope = (code, message) => ({ error: { code, message } });
@@ -18,39 +19,39 @@ const envelope = (code, message) => ({ error: { code, message } });
 // returning 200 after a successful login — mirroring the real session cookie.
 let authed = false;
 
-const server = setupServer(
-  http.get("/api/auth/me", () => {
-    if (authed) {
-      return HttpResponse.json({ username: "ali", display_name: "علي السامرائي" });
-    }
-    return HttpResponse.json(
-      envelope("unauthorized", "يجب تسجيل الدخول"),
-      { status: 401 }
-    );
-  }),
-  http.post("/api/auth/login", async ({ request }) => {
-    const { username, password } = await request.json();
-    if (username === "ali" && password === "correct") {
-      authed = true;
-      return HttpResponse.json({ username: "ali", display_name: "علي السامرائي" });
-    }
-    return HttpResponse.json(
-      envelope("unauthorized", "بيانات الدخول غير صحيحة"),
-      { status: 401 }
-    );
-  }),
-  http.post("/api/auth/logout", () => {
-    authed = false;
-    return HttpResponse.json({ status: "ok" });
-  })
-);
-
-beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
-afterEach(() => {
+// Register this file's auth handlers on the shared server before EACH test
+// (setup.js resets runtime handlers in its afterEach). These OVERRIDE the
+// shared default `/api/auth/me` (which returns an unconditional 200) so this
+// suite controls the authed/unauthed lifecycle precisely.
+beforeEach(() => {
   authed = false;
-  server.resetHandlers();
+  server.use(
+    http.get("/api/auth/me", () => {
+      if (authed) {
+        return HttpResponse.json({ username: "ali", display_name: "علي السامرائي" });
+      }
+      return HttpResponse.json(
+        envelope("unauthorized", "يجب تسجيل الدخول"),
+        { status: 401 }
+      );
+    }),
+    http.post("/api/auth/login", async ({ request }) => {
+      const { username, password } = await request.json();
+      if (username === "ali" && password === "correct") {
+        authed = true;
+        return HttpResponse.json({ username: "ali", display_name: "علي السامرائي" });
+      }
+      return HttpResponse.json(
+        envelope("unauthorized", "بيانات الدخول غير صحيحة"),
+        { status: 401 }
+      );
+    }),
+    http.post("/api/auth/logout", () => {
+      authed = false;
+      return HttpResponse.json({ status: "ok" });
+    })
+  );
 });
-afterAll(() => server.close());
 
 // Helper: fill the username + password fields and submit the login form.
 function submitLogin(username, password) {

@@ -1,106 +1,108 @@
 import { http, HttpResponse } from "msw";
-import { setupServer } from "msw/node";
 import { api, ApiError, AuthError } from "../src/api/client";
+// Use the single shared MSW server (Task D1 centralization). Per-file handlers
+// are registered with `server.use(...)` below; the server lifecycle (listen /
+// resetHandlers / close) lives in tests/setup.js.
+import { server } from "./setup";
 
 // The unified backend error envelope shape: { error: { code, message } }.
 const envelope = (code, message) => ({ error: { code, message } });
 
-const server = setupServer(
-  // ---- The two given cases from the plan ----
-  http.get("/api/meta", () => HttpResponse.json({ usd_rate: 1350 })),
-  http.get("/api/secret", () =>
-    HttpResponse.json(envelope("unauthorized", "يجب تسجيل الدخول"), {
-      status: 401,
-    })
-  ),
+// Register this file's handlers on the shared server. setup.js resets runtime
+// handlers in its `afterEach`, so we (re)register before EACH test to keep this
+// file's surface live for every case. These override any shared defaults.
+beforeEach(() => {
+  server.use(
+    // ---- The two given cases from the plan ----
+    http.get("/api/meta", () => HttpResponse.json({ usd_rate: 1350 })),
+    http.get("/api/secret", () =>
+      HttpResponse.json(envelope("unauthorized", "يجب تسجيل الدخول"), {
+        status: 401,
+      })
+    ),
 
-  // ---- Additional handlers covering the full implemented surface ----
+    // ---- Additional handlers covering the full implemented surface ----
 
-  // GET with query params → echo them back so we can assert the query string.
-  http.get("/api/echo", ({ request }) => {
-    const url = new URL(request.url);
-    return HttpResponse.json({
-      a: url.searchParams.get("a"),
-      b: url.searchParams.get("b"),
-      // `c` is passed as null/undefined and must be omitted.
-      hasC: url.searchParams.has("c"),
-    });
-  }),
+    // GET with query params → echo them back so we can assert the query string.
+    http.get("/api/echo", ({ request }) => {
+      const url = new URL(request.url);
+      return HttpResponse.json({
+        a: url.searchParams.get("a"),
+        b: url.searchParams.get("b"),
+        // `c` is passed as null/undefined and must be omitted.
+        hasC: url.searchParams.has("c"),
+      });
+    }),
 
-  // 404 with the envelope.
-  http.get("/api/missing", () =>
-    HttpResponse.json(envelope("not_found", "غير موجود"), { status: 404 })
-  ),
+    // 404 with the envelope.
+    http.get("/api/missing", () =>
+      HttpResponse.json(envelope("not_found", "غير موجود"), { status: 404 })
+    ),
 
-  // 409 conflict — code "conflict".
-  http.post("/api/scenarios", () =>
-    HttpResponse.json(envelope("conflict", "مكرر"), { status: 409 })
-  ),
+    // 409 conflict — code "conflict".
+    http.post("/api/scenarios", () =>
+      HttpResponse.json(envelope("conflict", "مكرر"), { status: 409 })
+    ),
 
-  // 409 from ETL — code "etl_running" (NOT "conflict"). Verifies no hardcoding.
-  http.post("/api/etl/run", () =>
-    HttpResponse.json(envelope("etl_running", "جارٍ التشغيل"), { status: 409 })
-  ),
+    // 409 from ETL — code "etl_running" (NOT "conflict"). Verifies no hardcoding.
+    http.post("/api/etl/run", () =>
+      HttpResponse.json(envelope("etl_running", "جارٍ التشغيل"), { status: 409 })
+    ),
 
-  // 422 flattened validation envelope (single message string, no detail[] array).
-  http.post("/api/validate", () =>
-    HttpResponse.json(envelope("validation_error", "username: حقل مطلوب"), {
-      status: 422,
-    })
-  ),
+    // 422 flattened validation envelope (single message string, no detail[] array).
+    http.post("/api/validate", () =>
+      HttpResponse.json(envelope("validation_error", "username: حقل مطلوب"), {
+        status: 422,
+      })
+    ),
 
-  // 500 non-JSON body → fallback error object, status surfaced.
-  http.get("/api/boom", () =>
-    HttpResponse.text("Internal Server Error", { status: 500 })
-  ),
+    // 500 non-JSON body → fallback error object, status surfaced.
+    http.get("/api/boom", () =>
+      HttpResponse.text("Internal Server Error", { status: 500 })
+    ),
 
-  // 204 No Content → must resolve to null without crashing on empty body.
-  http.delete("/api/notes/:id", () => new HttpResponse(null, { status: 204 })),
+    // 204 No Content → must resolve to null without crashing on empty body.
+    http.delete("/api/notes/:id", () => new HttpResponse(null, { status: 204 })),
 
-  // POST that echoes the JSON body back (verifies serialization + content-type).
-  http.post("/api/echo-body", async ({ request }) => {
-    const ct = request.headers.get("content-type") || "";
-    const body = await request.json();
-    return HttpResponse.json({ contentType: ct, received: body });
-  }),
+    // POST that echoes the JSON body back (verifies serialization + content-type).
+    http.post("/api/echo-body", async ({ request }) => {
+      const ct = request.headers.get("content-type") || "";
+      const body = await request.json();
+      return HttpResponse.json({ contentType: ct, received: body });
+    }),
 
-  // PUT round-trip.
-  http.put("/api/settings", async ({ request }) => {
-    const body = await request.json();
-    return HttpResponse.json({ saved: body });
-  }),
+    // PUT round-trip.
+    http.put("/api/settings", async ({ request }) => {
+      const body = await request.json();
+      return HttpResponse.json({ saved: body });
+    }),
 
-  // 200 DELETE that returns a body (mirrors real backend DELETE /notes/{id}).
-  http.delete("/api/notes-200/:id", () =>
-    HttpResponse.json({ deleted: 7 })
-  ),
+    // 200 DELETE that returns a body (mirrors real backend DELETE /notes/{id}).
+    http.delete("/api/notes-200/:id", () => HttpResponse.json({ deleted: 7 })),
 
-  // ---- Review-fix handlers (I1 / M1 / M2) ----
+    // ---- Review-fix handlers (I1 / M1 / M2) ----
 
-  // Transport-level failure: MSW short-circuits with a network error (no HTTP
-  // response is ever produced), exercising the `network_error` normalization.
-  http.get("/api/down", () => HttpResponse.error()),
+    // Transport-level failure: MSW short-circuits with a network error (no HTTP
+    // response is ever produced), exercising the `network_error` normalization.
+    http.get("/api/down", () => HttpResponse.error()),
 
-  // 500 with a NON-envelope JSON body carrying a `message` field. Must surface
-  // "weird" into the synthesized error message (M1), keeping code "http_error".
-  http.get("/api/weird", () =>
-    HttpResponse.json({ message: "weird" }, { status: 500 })
-  ),
+    // 500 with a NON-envelope JSON body carrying a `message` field. Must surface
+    // "weird" into the synthesized error message (M1), keeping code "http_error".
+    http.get("/api/weird", () =>
+      HttpResponse.json({ message: "weird" }, { status: 500 })
+    ),
 
-  // 500 with a non-envelope JSON body carrying FastAPI-style `detail`.
-  http.get("/api/weird-detail", () =>
-    HttpResponse.json({ detail: "odd detail" }, { status: 500 })
-  ),
+    // 500 with a non-envelope JSON body carrying FastAPI-style `detail`.
+    http.get("/api/weird-detail", () =>
+      HttpResponse.json({ detail: "odd detail" }, { status: 500 })
+    ),
 
-  // Echo full request URL so we can assert array params repeat keys (M2).
-  http.get("/api/array-echo", ({ request }) =>
-    HttpResponse.json({ url: request.url })
-  )
-);
-
-beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
+    // Echo full request URL so we can assert array params repeat keys (M2).
+    http.get("/api/array-echo", ({ request }) =>
+      HttpResponse.json({ url: request.url })
+    )
+  );
+});
 
 // ---- The two given cases ----
 
