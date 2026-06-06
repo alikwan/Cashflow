@@ -7,6 +7,10 @@ import { useMeta, useDashboard, useSuppliers, useInstallments } from "./api/hook
 import { Dashboard } from "./pages/Dashboard";
 import { MonthlyFlow } from "./pages/MonthlyFlow";
 import { Breakdown } from "./pages/Breakdown";
+import { Suppliers } from "./pages/Suppliers";
+import { Installments } from "./pages/Installments";
+import { Forecast } from "./pages/Forecast";
+import { SupplierPlan } from "./pages/SupplierPlan";
 
 // Root application component.
 //
@@ -88,11 +92,15 @@ function AuthedApp() {
         return <MonthlyFlow onNavigate={setActive} />;
       case "breakdown":
         return <Breakdown onNavigate={setActive} />;
-      // Pages not yet built (Tasks D3/E1) — minimal on-brand placeholder.
       case "suppliers":
+        return <Suppliers onNavigate={setActive} />;
       case "installments":
+        return <Installments onNavigate={setActive} />;
       case "forecast":
+        return <Forecast onNavigate={setActive} />;
       case "supplierplan":
+        return <SupplierPlan onNavigate={setActive} />;
+      // Page not yet built (Task E1) — minimal on-brand placeholder.
       case "settings":
       default:
         return <PendingPage />;

@@ -28,6 +28,7 @@ import {
   useInstallments,
   useForecast,
   useSupplierPlan,
+  useSupplierPlanSeries,
   useSettings,
   // pure mappers
   mapMeta,
@@ -417,6 +418,59 @@ describe("useSupplierPlan", () => {
     // Disabled → not loading, no data, no error, and the endpoint is never hit.
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.data).toBeNull();
+    expect(result.current.error).toBeNull();
+    expect(called).toBe(false);
+  });
+});
+
+describe("useSupplierPlanSeries", () => {
+  test("fetches all months in parallel and maps each (in input order)", async () => {
+    const seen = [];
+    server.use(
+      http.get("/api/supplier-plan", ({ request }) => {
+        const month = new URL(request.url).searchParams.get("month");
+        seen.push(month);
+        // Per-month pool varies so we can confirm order + mapping.
+        const pool = month === "2026-05" ? 120 : 130;
+        return HttpResponse.json({
+          month,
+          pool_m: pool,
+          leftover_m: 10,
+          alloc: [
+            { id: 1001, name: "البركة", currency: "IQD", allocated_m: 5, actual_paid_m: null },
+            { id: 4937, name: "الحافظ", currency: "USD", allocated_m: 0, actual_paid_m: null },
+          ],
+        });
+      })
+    );
+    const { result } = renderHook(() =>
+      useSupplierPlanSeries(["2026-05", "2026-06"])
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBeNull();
+    // One mapped object per month, in the SAME order as the input array.
+    expect(result.current.data.length).toBe(2);
+    expect(result.current.data[0].month).toBe("2026-05");
+    expect(result.current.data[0].pool).toBe(120); // pool_m → pool
+    expect(result.current.data[1].month).toBe("2026-06");
+    expect(result.current.data[1].pool).toBe(130);
+    // The USD supplier's give passes through as 0 (Option-1).
+    expect(result.current.data[0].alloc.find((a) => a.cur === "USD").give).toBe(0);
+    // Both months were requested.
+    expect(seen.sort()).toEqual(["2026-05", "2026-06"]);
+  });
+
+  test("idle (no fetch) with an empty month list", async () => {
+    let called = false;
+    server.use(
+      http.get("/api/supplier-plan", () => {
+        called = true;
+        return HttpResponse.json({ month: "x", pool_m: 0, leftover_m: 0, alloc: [] });
+      })
+    );
+    const { result } = renderHook(() => useSupplierPlanSeries([]));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.data).toEqual([]);
     expect(result.current.error).toBeNull();
     expect(called).toBe(false);
   });

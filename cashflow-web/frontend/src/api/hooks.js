@@ -590,6 +590,99 @@ export function useSupplierPlan(month, scenarioId) {
   return mapped(data, loading, error, refetch, mapSupplierPlan);
 }
 
+/**
+ * Fetch the supplier-plan for an ARRAY of months in parallel (Task D3).
+ *
+ * The SupplierPlan page needs ALL 12 forecast months at once — the 12-month
+ * stacked chart plots `alloc[].give` per supplier per month, and the user can
+ * jump between months without a refetch. The API is strictly per-month
+ * (`GET /api/supplier-plan?month=YYYY-MM`), so this hook fans out one request
+ * per month via `Promise.all` in a single effect, then maps each through the
+ * shared `mapSupplierPlan`. The result is the array of per-month mapped objects
+ * (in the SAME order as the input `months`).
+ *
+ * Consistency with `useApi`:
+ *   - One `AbortController` cancels ALL in-flight requests on unmount / when the
+ *     month set or scenario changes (so a stale batch never lands).
+ *   - Never setStates after unmount (mountedRef guard).
+ *   - Disabled (returns `{data:[], loading:false, error:null}`) until at least
+ *     one valid month is present — mirrors `useSupplierPlan`'s `enabled` gate.
+ *
+ * @param {string[]} months   array of "YYYY-MM" (e.g. from useForecast().forecast[].yearMonth)
+ * @param {number} [scenarioId]
+ * @returns {{data: object[], loading: boolean, error: Error|null, refetch: ()=>void}}
+ */
+export function useSupplierPlanSeries(months, scenarioId) {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [nonce, setNonce] = useState(0);
+
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const refetch = useCallback(() => setNonce((n) => n + 1), []);
+
+  // Stable list of valid month keys (drops falsy entries). Serialized for the
+  // dependency array so equal month sets don't retrigger.
+  const validMonths = arr(months).filter(Boolean);
+  const monthsKey = JSON.stringify(validMonths);
+  const scenKey =
+    scenarioId === null || scenarioId === undefined ? null : scenarioId;
+
+  useEffect(() => {
+    const list = JSON.parse(monthsKey);
+    if (!list.length) {
+      // Nothing to fetch yet (forecast months not loaded) — idle, not loading.
+      if (mountedRef.current) {
+        setLoading(false);
+        setError(null);
+        setData([]);
+      }
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+
+    (async () => {
+      try {
+        const raws = await Promise.all(
+          list.map((month) => {
+            const params = { month };
+            if (scenKey !== null && scenKey !== undefined) {
+              params.scenario_id = scenKey;
+            }
+            return api.get("/api/supplier-plan", {
+              params,
+              signal: controller.signal,
+            });
+          })
+        );
+        if (!mountedRef.current || controller.signal.aborted) return;
+        setData(raws.map(mapSupplierPlan));
+      } catch (err) {
+        if (err && err.name === "AbortError") return;
+        if (!mountedRef.current || controller.signal.aborted) return;
+        setError(err);
+      } finally {
+        if (mountedRef.current && !controller.signal.aborted) setLoading(false);
+      }
+    })();
+
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthsKey, scenKey, nonce]);
+
+  return { data, loading, error, refetch };
+}
+
 // =====================================================================
 //  9. useSettings — Settings page (+ App-level prop source for all pages)
 // =====================================================================
