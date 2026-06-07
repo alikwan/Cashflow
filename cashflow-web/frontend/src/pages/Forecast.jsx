@@ -125,6 +125,12 @@ export function Forecast({ reserve: reserveProp, incomeGrowth = 0 }) {
   const t = calc.totals[scn];
   const money = (m) => F.fmtM(m);
   const scnLabel = (D.scenarios?.[scn]?.label) || '';
+  // Forecast date range, derived from the live data (not hardcoded) so it always
+  // matches the projected months — e.g. "حزيران 2026 → أيار 2027".
+  const fcMonths = D.forecast || [];
+  const fcRange = fcMonths.length
+    ? `${fcMonths[0].label} → ${fcMonths[fcMonths.length - 1].label}`
+    : '';
   const runwayMonths = (() => {
     const avgOut = (calc.totals.pess.out / 12) || 1;
     return (calc.totals.pess.min / avgOut);
@@ -132,7 +138,7 @@ export function Forecast({ reserve: reserveProp, incomeGrowth = 0 }) {
 
   return (
     <div style={{ padding: '24px 28px 48px' }}>
-      <PageHeader title="التنبؤ والسيناريوهات" subtitle="إسقاط 12 شهراً قادماً (أيار 2026 → نيسان 2027) وفق نمط موسمي، مع خصم احتياطي مصاريف الشركاء. ثلاثة سيناريوهات للسيولة."
+      <PageHeader title="التنبؤ والسيناريوهات" subtitle={`إسقاط ${fcMonths.length || 12} شهراً قادماً${fcRange ? ` (${fcRange})` : ''} وفق نمط موسمي، مع خصم احتياطي مصاريف الشركاء. ثلاثة سيناريوهات للسيولة.`}
         actions={<div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <ConfidenceBadge mape={D.mape} confidence={D.confidence} />
           <Button variant="secondary" size="sm" icon="download" onClick={() => showToast('تم تجهيز ملف التنبؤ')}>تصدير</Button>
