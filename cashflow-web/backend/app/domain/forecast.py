@@ -87,24 +87,26 @@ def _compute_cagr(complete_fy_totals: pd.Series) -> float:
     return float(np.clip(raw, CAGR_FLOOR, CAGR_CAP))
 
 
-def _derive_base_year(series: pd.Series, fy_start: int) -> int:
+def _gen_forecast_index_after(last_ym: str, horizon: int) -> list[str]:
     """
-    The forecast covers the next full FY (May→Apr) strictly after the last
-    actual month in the series.
+    Generate `horizon` consecutive YYYY-MM labels starting the month
+    immediately AFTER `last_ym` — a rolling forecast with no gap before it.
 
-    Rule: parse last YYYY-MM.
-      If last_month < fy_start  →  base_year = last_year
-      Else                       →  base_year = last_year + 1
+    e.g. last='2026-05' → ['2026-06', …, '2027-05']
+         last='2025-12' → ['2026-01', …, '2026-12']
 
-    e.g. last='2026-04' → 2026 (May 2026 starts the next FY)
-         last='2025-12' → 2026 (May 2026 starts the next FY)
-         last='2026-06' → 2027 (May 2027 starts the next FY)
+    (Previously the forecast jumped to the next fiscal-year May, which skipped
+    up to a full year between the last actual month and the projection.)
     """
-    last_ym = sorted(series.index)[-1]
-    last_year, last_month = map(int, last_ym.split("-"))
-    if last_month < fy_start:
-        return last_year
-    return last_year + 1
+    y, m = map(int, last_ym.split("-"))
+    out: list[str] = []
+    for _ in range(horizon):
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+        out.append(f"{y}-{m:02d}")
+    return out
 
 
 def _gen_forecast_index(base_year: int, fy_start: int, horizon: int) -> list[str]:
@@ -168,9 +170,10 @@ def seasonal_forecast(
     cft = _complete_fy_totals(series, fy_start)
     cagr = _compute_cagr(cft)
 
-    # Derive forecast start from data (Refinement #1)
-    actual_base_year = _derive_base_year(series, fy_start)
-    idx = _gen_forecast_index(actual_base_year, fy_start, horizon)
+    # Forecast starts the month immediately after the last actual month
+    # (rolling 12-month projection — no gap between history and forecast).
+    last_ym = sorted(series.index)[-1]
+    idx = _gen_forecast_index_after(last_ym, horizon)
 
     values: list[float] = []
     for ym in idx:
