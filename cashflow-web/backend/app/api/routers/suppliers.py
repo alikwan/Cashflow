@@ -104,8 +104,14 @@ def get_suppliers(
             )
             .all()
         )
+        # A supplier may have one row PER currency sub-account (e.g. a dinar
+        # account + a dollar account). SUM their IQD-equivalent balances so the
+        # displayed figure is the supplier's true net position, not whichever
+        # currency row happened to be processed last.
         for row in snap_rows:
-            balance_by_account[row.account_id] = float(row.balance_iqd_m)
+            balance_by_account[row.account_id] = (
+                balance_by_account.get(row.account_id, 0.0) + float(row.balance_iqd_m)
+            )
 
     # ------------------------------------------------------------------
     # 5. Assemble response
