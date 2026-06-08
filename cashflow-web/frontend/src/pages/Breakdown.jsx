@@ -65,9 +65,13 @@ export function Breakdown() {
     segments: catMonthMap.map(c => ({ key: c.key, label: c.name, value: c.map[m.yearMonth] || 0, color: c.chart })),
   }));
 
-  // category totals — يُحسب من total لكل فئة (مجموع آخر النافذة) من الـ API.
-  const catTotals = expCats.map(c => ({
-    key: c.key, name: c.name, chart: c.chart, type: c.type, total: c.total || 0,
+  // category totals — computed over the LAST 12 MONTHS (to match the chart, the
+  // "آخر 12 شهراً" label, and the dashboard). NOTE: the API's `c.total` is the
+  // FULL-history sum (all 49 months), which would 4× these figures.
+  const last12Yms = last12.map(m => m.yearMonth);
+  const catTotals = catMonthMap.map(c => ({
+    key: c.key, name: c.name, chart: c.chart, type: c.type,
+    total: last12Yms.reduce((a, ym) => a + (c.map[ym] || 0), 0),
   })).sort((a, b) => b.total - a.total);
   const expTotal = catTotals.reduce((a, c) => a + c.total, 0) || 1;
   const sayrafa = (catTotals.find(c => c.key === 'sayrafa') || { total: 0 }).total;
