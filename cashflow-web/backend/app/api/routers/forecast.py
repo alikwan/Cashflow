@@ -68,10 +68,14 @@ def get_forecast(
     reserve_m: float = float(global_assump.unexpected_reserve_m) if (
         global_assump and global_assump.unexpected_reserve_m is not None
     ) else 15.0
-    # Global income-growth multiplier (applied on top of each scenario's in_g)
-    income_growth_factor: float = float(global_assump.income_growth_pct) if (
+    # Global income-growth adjustment, applied on top of each scenario's in_g.
+    # `income_growth_pct` is a PERCENT (e.g. 0 = no change, +5 = +5%, -15 = -15%,
+    # matching the Settings slider -15..15) → convert to a multiplier (1 + pct/100).
+    # A missing/null assumption means 0% growth → factor 1.0.
+    _income_growth_pct: float = float(global_assump.income_growth_pct) if (
         global_assump and global_assump.income_growth_pct is not None
-    ) else 1.0
+    ) else 0.0
+    income_growth_factor: float = 1.0 + _income_growth_pct / 100.0
 
     # scenario_id override: if a Scenario row with a per-scenario income_growth_pct
     # exists, use it — otherwise silently fall back to the global value.
@@ -86,7 +90,7 @@ def get_forecast(
                 .first()
             )
             if sc_assump is not None and sc_assump.income_growth_pct is not None:
-                income_growth_factor = float(sc_assump.income_growth_pct)
+                income_growth_factor = 1.0 + float(sc_assump.income_growth_pct) / 100.0
 
     # ------------------------------------------------------------------
     # 2. Latest cash balance (current_cash) from monthly_cashflow

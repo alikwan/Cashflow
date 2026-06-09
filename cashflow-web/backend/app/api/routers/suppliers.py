@@ -36,7 +36,13 @@ from app.api.deps import get_current_user, get_session
 from app.api.errors import ApiError
 from app.api.routers._utils import latest_snapshot_date, load_active_caps
 from app.api.schemas import CapCreate, CapOut, SupplierOut, SuppliersResponse
-from app.db.models import BalancesSnapshot, PerSupplierMonthly, Supplier, SupplierCap
+from app.db.models import (
+    BalancesSnapshot,
+    MonthlyCashflow,
+    PerSupplierMonthly,
+    Supplier,
+    SupplierCap,
+)
 
 router = APIRouter(prefix="/api", tags=["suppliers"])
 
@@ -81,13 +87,30 @@ def get_suppliers(
         )
         .all()
     )
-    # Group by account_id → sorted list of paid_m
-    psm_by_account: dict[int, list[float]] = defaultdict(list)
+    # Canonical last-12 months (the same window the dashboard/cashflow use), so
+    # every supplier's `monthly` aligns 1:1 with those 12 columns. Suppliers with
+    # gaps (no payment in a month, or a short history) get 0 for the missing month
+    # rather than a shorter array — which previously shifted the grid + the
+    # الإجمالي/الرصيد columns out of alignment for those rows.
+    last12_yms: list[str] = [
+        ym for (ym,) in (
+            db.query(MonthlyCashflow.year_month)
+            .order_by(MonthlyCashflow.year_month.desc())
+            .limit(12)
+            .all()
+        )
+    ][::-1]  # ascending (oldest → newest), matching the header order
+
+    # {account_id: {year_month: paid_m}}
+    psm_map: dict[int, dict[str, float]] = defaultdict(dict)
     for row in all_psm:
-        psm_by_account[row.supplier_account_id].append(float(row.paid_m))
-    # Trim to last 12
-    for aid in psm_by_account:
-        psm_by_account[aid] = psm_by_account[aid][-12:]
+        psm_map[row.supplier_account_id][row.year_month] = float(row.paid_m)
+
+    # Fixed-length 12 array per supplier, aligned to last12_yms (0 where missing).
+    psm_by_account: dict[int, list[float]] = {
+        aid: [psm_map.get(aid, {}).get(ym, 0.0) for ym in last12_yms]
+        for aid in account_ids
+    }
 
     # ------------------------------------------------------------------
     # 4. Latest balances_snapshot for supplier accounts
@@ -104,8 +127,14 @@ def get_suppliers(
             )
             .all()
         )
+        # A supplier may have one row PER currency sub-account (e.g. a dinar
+        # account + a dollar account). SUM their IQD-equivalent balances so the
+        # displayed figure is the supplier's true net position, not whichever
+        # currency row happened to be processed last.
         for row in snap_rows:
-            balance_by_account[row.account_id] = float(row.balance_iqd_m)
+            balance_by_account[row.account_id] = (
+                balance_by_account.get(row.account_id, 0.0) + float(row.balance_iqd_m)
+            )
 
     # ------------------------------------------------------------------
     # 5. Assemble response

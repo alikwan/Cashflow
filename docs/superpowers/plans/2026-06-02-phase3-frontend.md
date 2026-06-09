@@ -114,6 +114,8 @@ git commit -m "feat(web): api client with cookie creds + error handling"
 
 ### Task B2: AuthContext + شاشة الدخول + حماية المسارات
 
+**ملاحظة التنفيذ (B2):** كما نُفِّذت فعلياً، يعيش `AuthProvider` + الحارس داخل `src/App.jsx` (لا في `main.jsx`) حتى يعمل `render(<App/>)` مستقلاً في الاختبارات. كما **أُسقط react-router عمداً**: التنقّل قائم على الحالة (`active` page + `onNavigate`) وفق مرجع التصميم الملزم `Shell.jsx`. (`AuthProvider` يقبل أيضاً `initialUser` اختياري كمنفذ للاختبارات/Storybook يزرع جلسة مُصادَقة ويتخطّى استدعاء الإقلاع `/api/auth/me`.)
+
 **Files:**
 - Create: `src/auth/AuthContext.jsx`, `src/auth/Login.jsx`, `src/main.jsx` (Router)
 - Test: `tests/auth.test.jsx`

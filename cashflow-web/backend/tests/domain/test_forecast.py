@@ -9,7 +9,7 @@ def test_flat_series_forecasts_minus_reserve():
     fc = seasonal_forecast(_series(), horizon=12, reserve_m=2.0)
     assert len(fc.values) == 12
     assert all(abs(v - 8.0) < 1e-6 for v in fc.values)   # 10*(1+0) - 2 = 8
-    assert fc.index[0] == "2026-05"                       # next May after 2025-12
+    assert fc.index[0] == "2026-01"                       # month right after last actual 2025-12
     assert -0.10 <= fc.cagr <= 0.15
 
 def test_backtest_mape_and_confidence():
@@ -41,8 +41,10 @@ def test_cagr_uses_complete_fiscal_years_unclamped():
     assert all(abs(v - 10.5 * 1.10) < 1e-6 for v in fc.values)   # seasonal mean (10+11)/2 × (1+cagr)
 
 def test_forecast_start_derived_from_last_actual_month():
+    # Rolling forecast: starts the month immediately after the last actual month.
     def start(last_ym):
         return seasonal_forecast(pd.Series([5.0], index=[last_ym]), horizon=12).index[0]
-    assert start("2026-04") == "2026-05"   # month < May → same year's May
-    assert start("2025-12") == "2026-05"   # month ≥ May → next year's May
-    assert start("2026-06") == "2027-05"
+    assert start("2026-04") == "2026-05"   # April → May
+    assert start("2025-12") == "2026-01"   # Dec → Jan (year rolls over)
+    assert start("2026-06") == "2026-07"   # June → July
+    assert start("2026-05") == "2026-06"   # May → June (the production case: no 12-month gap)
