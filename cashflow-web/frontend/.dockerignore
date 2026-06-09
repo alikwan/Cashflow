@@ -1,0 +1,16 @@
+# Keep the build context lean and avoid copying stale local artifacts / secrets.
+#
+# NOTE: the frontend image is built with context = cashflow-web/ (the parent),
+# so the EFFECTIVE .dockerignore is cashflow-web/.dockerignore. This file mirrors
+# the frontend-scoped excludes for clarity and in case the image is ever built
+# with context = frontend/ directly.
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+*.local
+*.log
+npm-debug.log*
+.git/
+.DS_Store

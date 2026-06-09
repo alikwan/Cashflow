@@ -1,0 +1,26 @@
+# Build context for the frontend image is cashflow-web/ (so the Dockerfile can
+# reach BOTH frontend/ and docker/nginx.conf). Docker reads THIS file from the
+# context root, so it must exclude everything the frontend build does not need —
+# most importantly the .env secret, the backend tree, docs, and the frontend's
+# local node_modules/dist (rebuilt fresh by `npm ci` + `vite build` in-image).
+
+# Secrets — never copy into the build context.
+.env
+.env.*
+backend/.env
+
+# Not needed for the frontend image.
+backend/
+docs/
+
+# Frontend: rebuilt in-image; exclude stale local artifacts.
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/.env*
+frontend/*.log
+frontend/npm-debug.log*
+
+# VCS / OS cruft.
+.git/
+**/.DS_Store
