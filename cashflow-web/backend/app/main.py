@@ -22,6 +22,15 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.api.errors import register_error_handlers
 from app.config import settings
 
+# Configure root logging so the app's own INFO logs (owner seeding, ETL progress,
+# "nightly scheduler started", reconciliation gaps) reach stdout — and therefore
+# `docker logs` / the deployment. Without this only uvicorn's own loggers emit and
+# the app's events are invisible in the container. basicConfig is idempotent.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+
 logger = logging.getLogger(__name__)
 
 
