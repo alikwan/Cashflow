@@ -49,8 +49,17 @@ export function Installments() {
   const b120 = aging.find(a => a.key === 'b120');
   const notDue = current ? current.amount : 0;
   const overdue = total - notDue;
-  const seg = aging.map(a => ({ label: a.label, value: a.amount, color: a.color }));
-  const maxAging = Math.max(0, ...aging.map(a => a.amount));
+  // Reconcile the dated buckets (Σ aging) to the plan-level total (D.total): the
+  // difference is outstanding at the contract level with no single dated installment
+  // (settled/adjusted rows). Show it as an explicit slice so the donut + percentages
+  // add up to the headline total instead of falling ~4% short of it.
+  const agingSum = aging.reduce((a, b) => a + b.amount, 0);
+  const undated = total - agingSum;
+  const agingDisplay = undated > 0.5
+    ? [...aging, { key: 'undated', label: 'قائم بلا تاريخ استحقاق', amount: undated, color: '--slate-300', count: null }]
+    : aging;
+  const seg = agingDisplay.map(a => ({ label: a.label, value: a.amount, color: a.color }));
+  const maxAging = Math.max(0, ...agingDisplay.map(a => a.amount));
   const pct = (v) => total ? (v / total * 100).toFixed(0) : '0';
   const overdueLate = aging
     .filter(a => ['b61_90', 'b91_120', 'b120'].includes(a.key))
@@ -81,14 +90,14 @@ export function Installments() {
         <Card>
           <SectionHeader title="تفصيل الأعمار" subtitle="المبلغ وعدد الأقساط لكل شريحة" icon="filter" />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {aging.map((a, i) => (
+            {agingDisplay.map((a, i) => (
               <div key={i}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: 'var(--slate-700)', fontWeight: 600 }}>
                     <span style={{ width: 11, height: 11, borderRadius: 3, background: cssVar(a.color) }} />{a.label}
                   </span>
                   <span style={{ fontSize: 12.5, color: 'var(--slate-400)' }}>
-                    <span className="num" style={{ fontWeight: 700, color: 'var(--slate-900)', fontSize: 14 }}>{money(a.amount)}</span> مليون · <span className="num">{F.fmtInt(a.count)}</span> قسط
+                    <span className="num" style={{ fontWeight: 700, color: 'var(--slate-900)', fontSize: 14 }}>{money(a.amount)}</span> مليون{a.count != null ? <> · <span className="num">{F.fmtInt(a.count)}</span> قسط</> : null}
                   </span>
                 </div>
                 <div style={{ height: 9, background: 'var(--slate-100)', borderRadius: 999, overflow: 'hidden' }}>
