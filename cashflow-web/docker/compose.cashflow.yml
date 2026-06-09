@@ -31,6 +31,39 @@ services:
       timeout: 5s
       retries: 5
 
+  # خلفية FastAPI: alembic upgrade head ثم uvicorn (مع مجدول ETL الليلي عبر lifespan).
+  backend:
+    build:
+      context: ../backend
+    container_name: cashflow-backend
+    restart: unless-stopped
+    # كل الأسرار/الإعدادات من .env، ثم نتجاوز المضيفات للأسماء الداخلية للشبكة:
+    #   .env فيه POSTGRES_HOST/MSSQL_HOST بقيم المضيف (localhost) التي لا تعمل داخل الحاوية.
+    #   environment يتغلّب على env_file، فنوجّه الاتصال لأسماء الخدمات على شبكة Docker.
+    env_file:
+      - ../.env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      MSSQL_HOST: mssql
+      MSSQL_PORT: "1433"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      # تُنشر على المنفذ 8002 (loopback فقط) للتحقّق/التصحيح؛ 8000/8001 محجوزان.
+      - "127.0.0.1:8002:8000"
+    networks:
+      - accounting_net
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health').status==200 else 1)\""
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
 networks:
   accounting_net:
     name: sqlserver-docker_default
