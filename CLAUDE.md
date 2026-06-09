@@ -4,24 +4,44 @@
 > اقرأه بالكامل قبل كتابة أي كود أو تشغيل أي تحليل. يحتوي على نموذج البيانات، الفرضيات،
 > القرارات المعتمدة، **الدروس الحرجة**، وكيفية استئناف العمل.
 >
-> **آخر تحديث:** 2026-06-05 · **صاحب المشروع:** علي السامرائي (ali_alsamrae89@yahoo.com)
+> **آخر تحديث:** 2026-06-09 · **صاحب المشروع:** علي السامرائي (ali_alsamrae89@yahoo.com)
 
 ---
 
 ## 0. حالة المشروع (اقرأ هذا أولاً)
 
-المشروع في طورين متوازيين:
+**نظام الويب هو المخرَج الأساسي الآن، وهو مكتمل ومنشور عبر Docker.** سكربت Excel القديم
+لم يعد سوى مرجع منطق/تنسيق.
 
-| الطور | الوصف | الحالة |
+| المخرَج | الوصف | الحالة |
 |------|-------|--------|
-| **أداة التحليل** | سكربت Python `analysis/build_excel.py` يولّد تقرير Excel من 15 ورقة من قاعدة `AlBaytAlSaeid`. | يعمل (لكن **منطق الأقساط فيه مقلوب — انظر §6**). |
-| **نظام الويب** | تحويل الأداة إلى نظام ويب تفاعلي لإدارة القرارات (FastAPI + React + PostgreSQL + ETL ليلي). | **قيد البناء** — ✅ **الخطط 0+1+2 مكتملة** (Postgres+مخطّط+ETL يملأ القاعدة، وخلفية FastAPI كاملة: **37 مساراً، 250 اختباراً**، مصادقة/تدقيق/تصدير/ETL، دُخّنت حيّاً). **التالي: الخطة 3 (واجهة React/Vite)** — انظر `NEXT-SESSION-PROMPT.md`. |
+| **نظام الويب** | نظام ويب تفاعلي لإدارة قرارات السيولة (FastAPI + React + PostgreSQL + ETL ليلي). | ✅ **مكتمل ومنشور** عبر `docker compose`. **الخطط 0–4 كلّها منجزة** (انظر أدناه). |
+| **أداة التحليل (مرجع فقط)** | سكربت `analysis/build_excel.py` يولّد تقرير Excel من 15 ورقة. | يُحتفَظ به **كمرجع للمنطق/التنسيق فقط** (منطق الأقساط فيه **مقلوب — §6**؛ المنطق المعتمد انتقل إلى `cashflow-web/backend/app/domain/`). |
+
+**الخطط الخمس — الحالة:**
+
+| الخطة | المحتوى | الحالة |
+|------|---------|:------:|
+| 0 | الأساس (Postgres + مخطّط Alembic + Docker compose) | ✅ |
+| 1 | ETL + منطق `domain/` النقي (تصنيف/تنبؤ/توزيع/تنبيهات) | ✅ |
+| 2 | خلفية FastAPI — **37 مساراً، 250 اختباراً** (مصادقة كوكي/تدقيق/تصدير Excel+PDF/ETL) | ✅ |
+| 3 | واجهة React/Vite — **8 صفحات، 112 اختباراً** (PR `alikwan/Cashflow#1`) | ✅ |
+| 4 | النشر: حاويات Docker (3 خدمات) + نسخ احتياطي/استعادة + تحقّق من الأرقام + RUNBOOK | ✅ |
+
+**التشغيل/النشر (موجز — التفصيل في RUNBOOK):**
+- حزمة Docker (مشروع compose `cashflow`): `cashflow-postgres` + `cashflow-backend` (FastAPI + مجدول ETL ليلي 02:00 بغداد) + `cashflow-frontend` (nginx يقدّم بناء React ويوكّل `/api`→backend).
+- الرفع: `cd cashflow-web && docker compose --env-file .env -f docker/compose.cashflow.yml up -d` · الوصول: `http://<host>:8080` (دخول `owner` بكلمة المرور في `cashflow-web/.env`).
+- **دليل التشغيل الكامل:** `cashflow-web/docs/RUNBOOK.md`.
+- **قائمة التحقّق من الأرقام:** `cashflow-web/docs/verification-checklist.md`.
 
 ### مخرجات/مواقع رئيسية
+- **ملف Docker compose:** `cashflow-web/docker/compose.cashflow.yml`
+- **دليل التشغيل والصيانة (RUNBOOK):** `cashflow-web/docs/RUNBOOK.md`
+- **قائمة التحقّق من الأرقام:** `cashflow-web/docs/verification-checklist.md`
+- **النسخ الاحتياطي/الاستعادة:** `cashflow-web/docker/backup/{backup.sh,restore.sh}`
 - **مواصفة نظام الويب:** `docs/superpowers/specs/2026-06-01-cashflow-web-system-design.md`
 - **خطط التنفيذ الخمس:** `docs/superpowers/plans/2026-06-02-phase0..4-*.md`
 - **نتائج التحقّق من القاعدة الحيّة:** `cashflow-web/docs/discovery/`
-- **برومبت استئناف الجلسة:** `cashflow-web/docs/NEXT-SESSION-PROMPT.md`
 - **مرجع الواجهة الملزم (نموذج تصميم React):** `design-reference/`
 - **مستودع Git:** فرع `cashflow-web` (جذر "Monthly cash flow").
 - **🔑 المرجع الموثّق لقراءة الأقساط/الدفعات من MSSQL:** نظام **DC-System** على `/Users/ak/Documents/DC-System-Workspace/DC-System/` (انظر §6 و§12).
@@ -208,9 +228,17 @@ Monthly cash flow/                     # جذر المستودع (فرع git: ca
 ├── docs/superpowers/
 │   ├── specs/2026-06-01-cashflow-web-system-design.md   # مواصفة نظام الويب (مُراجَعة)
 │   └── plans/2026-06-02-phase0..4-*.md                  # 5 خطط تنفيذ (مُراجَعة)
-├── cashflow-web/                      # نظام الويب (قيد البناء)
-│   └── docs/discovery/                # نتائج التحقّق من القاعدة الحيّة (00..04)
-│       └── NEXT-SESSION-PROMPT.md     # برومبت استئناف الجلسة
+├── cashflow-web/                      # نظام الويب (✅ مكتمل ومنشور عبر Docker)
+│   ├── backend/                       # FastAPI + ETL + domain/ (المنطق المعتمد)
+│   ├── frontend/                      # React/Vite (8 صفحات)
+│   ├── docker/
+│   │   ├── compose.cashflow.yml       # حزمة الخدمات الثلاث
+│   │   └── backup/{backup.sh,restore.sh}   # نسخ احتياطي/استعادة جداول التطبيق
+│   └── docs/
+│       ├── RUNBOOK.md                 # دليل التشغيل والصيانة
+│       ├── verification-checklist.md  # التحقّق من تطابق الأرقام مع المصدر
+│       ├── discovery/                 # نتائج التحقّق من القاعدة الحيّة
+│       └── NEXT-SESSION-PROMPT.md     # برومبت استئناف (الخطط 0–4 منجزة)
 ├── design-reference/                  # نموذج تصميم React (مرجع واجهة ملزم) + screenshots
 └── Desktop reference images/          # صور سندات قبض/دفع
 ```
