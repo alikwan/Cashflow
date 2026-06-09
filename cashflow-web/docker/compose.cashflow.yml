@@ -31,6 +31,68 @@ services:
       timeout: 5s
       retries: 5
 
+  # خلفية FastAPI: alembic upgrade head ثم uvicorn (مع مجدول ETL الليلي عبر lifespan).
+  backend:
+    build:
+      context: ../backend
+    container_name: cashflow-backend
+    restart: unless-stopped
+    # كل الأسرار/الإعدادات من .env، ثم نتجاوز المضيفات للأسماء الداخلية للشبكة:
+    #   .env فيه POSTGRES_HOST/MSSQL_HOST بقيم المضيف (localhost) التي لا تعمل داخل الحاوية.
+    #   environment يتغلّب على env_file، فنوجّه الاتصال لأسماء الخدمات على شبكة Docker.
+    env_file:
+      - ../.env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      MSSQL_HOST: mssql
+      MSSQL_PORT: "1433"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      # تُنشر على المنفذ 8002 (loopback فقط) للتحقّق/التصحيح؛ 8000/8001 محجوزان.
+      - "127.0.0.1:8002:8000"
+    networks:
+      - accounting_net
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health').status==200 else 1)\""
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # واجهة React/Vite خلف nginx: تقدّم البناء الساكن (dist/) وتوكّل /api → backend:8000
+  # على شبكة Docker الداخلية (نموذج same-origin: لا حاجة لـ CORS، كوكي الجلسة يعمل).
+  frontend:
+    build:
+      # السياق هو cashflow-web/ كي يصل Dockerfile لكلٍّ من frontend/ وملف docker/nginx.conf.
+      context: ..
+      dockerfile: frontend/Dockerfile
+    container_name: cashflow-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      # تُنشر على كل الواجهات (0.0.0.0) كي يصلها المالك من جهازه على شبكة المعرض؛
+      # التطبيق محميّ بمصادقة كوكي.
+      # المنفذ 8100 (لا 8080) لتفادي التعارض مع DC-System الإنتاجي الذي يحجز 8080
+      # (reverb في docker-compose.prod.yml). قابل للتغيير عبر FRONTEND_PORT في .env.
+      - "${FRONTEND_PORT:-8100}:80"
+    networks:
+      - accounting_net
+    healthcheck:
+      # nginx يقدّم index.html على / — نتأكّد أنّه حيّ ويردّ. نستخدم 127.0.0.1
+      # صراحةً: داخل الحاوية "localhost" يحلّ إلى ::1 (IPv6) لكن nginx يستمع على
+      # IPv4 فقط (listen 80;)، فاسم localhost يفشل بـ Connection refused.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 networks:
   accounting_net:
     name: sqlserver-docker_default
