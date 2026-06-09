@@ -30,7 +30,7 @@
 
 **التشغيل/النشر (موجز — التفصيل في RUNBOOK):**
 - حزمة Docker (مشروع compose `cashflow`): `cashflow-postgres` + `cashflow-backend` (FastAPI + مجدول ETL ليلي 02:00 بغداد) + `cashflow-frontend` (nginx يقدّم بناء React ويوكّل `/api`→backend).
-- الرفع: `cd cashflow-web && docker compose --env-file .env -f docker/compose.cashflow.yml up -d` · الوصول: `http://<host>:8080` (دخول `owner` بكلمة المرور في `cashflow-web/.env`).
+- الرفع: `cd cashflow-web && docker compose --env-file .env -f docker/compose.cashflow.yml up -d` · الوصول: `http://<host>:8100` (دخول `owner` بكلمة المرور في `cashflow-web/.env`).
 - **دليل التشغيل الكامل:** `cashflow-web/docs/RUNBOOK.md`.
 - **قائمة التحقّق من الأرقام:** `cashflow-web/docs/verification-checklist.md`.
 

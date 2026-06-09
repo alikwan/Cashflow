@@ -54,7 +54,7 @@ docker compose --env-file .env -f docker/compose.cashflow.yml up -d
 
 ### الوصول وتسجيل الدخول
 
-- افتح المتصفّح على: **`http://<host>:8080`** (استبدل `<host>` بعنوان جهاز الخادم
+- افتح المتصفّح على: **`http://<host>:8100`** (استبدل `<host>` بعنوان جهاز الخادم
   على شبكة المعرض، أو `localhost` إن كنت على نفس الجهاز).
 - **اسم المستخدم:** `owner`
 - **كلمة المرور:** القيمة المقابلة لـ `APP_OWNER_PASSWORD` في ملف
@@ -101,10 +101,10 @@ docker compose --env-file .env -f docker/compose.cashflow.yml restart backend
 
 ```bash
 # تشغيل ETL الآن:
-curl -X POST http://<host>:8080/api/etl/run
+curl -X POST http://<host>:8100/api/etl/run
 
 # قراءة حالة آخر تشغيل (نجاح/فشل/قيد التشغيل + الطابع الزمني):
-curl http://<host>:8080/api/etl/status
+curl http://<host>:8100/api/etl/status
 ```
 
 > الطلبات تحتاج كوكي جلسة صالحة (بعد تسجيل الدخول). من المتصفّح يكفي أن تكون
